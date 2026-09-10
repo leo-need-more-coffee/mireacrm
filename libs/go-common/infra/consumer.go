@@ -2,8 +2,10 @@ package infra
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -11,8 +13,10 @@ import (
 	eventsv1 "mirea-crm/gen/go/mirea/events/v1"
 )
 
-// Handler обрабатывает одно событие. Возвращённая ошибка означает, что
-// сообщение уйдёт в dead-letter: повторять его бессмысленно или опасно.
+// Handler обрабатывает одно событие. Возвращённая ошибка означает повтор:
+// событие вернётся в очередь и будет обработано снова, пока не исчерпает
+// RetryLimit. InvalidArgumentError повтора не получает — разбираться в
+// заведомо неверном payload брокеру нечем.
 type Handler func(ctx context.Context, envelope *eventsv1.EventEnvelope) error
 
 type Consumer struct {
@@ -87,6 +91,65 @@ func (c *Consumer) Run(ctx context.Context) error {
 	}
 }
 
+// Ошибка обработчика чаще всего транзиентная: сосед перезапускается, база
+// моргнула. Повторить безопасно — обработчики идемпотентны, отметка об
+// обработке пишется той же транзакцией, что и эффект. Поэтому событие
+// возвращается в очередь, а не уходит в dead-letter с первой же осечки:
+// иначе перезапуск соседа навсегда терял бы списание материалов.
+const RetryLimit = 5
+
+// Пауза растёт с попытками: без неё лимит сгорает за миллисекунды, пока
+// сосед ещё поднимается, и повтор не успевает ничего исправить.
+var (
+	retryDelay    = 500 * time.Millisecond
+	retryDelayMax = 5 * time.Second
+)
+
+// attempt — какая это попытка по счёту. Счётчик ведёт брокер: quorum-очередь
+// проставляет x-delivery-count при каждом возврате.
+func attempt(delivery amqp.Delivery) int {
+	switch value := delivery.Headers["x-delivery-count"].(type) {
+	case int64:
+		return int(value) + 1
+	case int32:
+		return int(value) + 1
+	case int:
+		return value + 1
+	default:
+		return 1
+	}
+}
+
+func (c *Consumer) retryOrBury(
+	ctx context.Context, delivery amqp.Delivery,
+	envelope *eventsv1.EventEnvelope, err error, log *slog.Logger,
+) {
+	// Повторять нечего: payload не проходит проверку, и следующая попытка
+	// разобьётся о то же самое.
+	var invalid *InvalidArgumentError
+	tries := attempt(delivery)
+
+	if errors.As(err, &invalid) || tries >= RetryLimit {
+		log.Error("обработка не удалась окончательно", "error", err, "attempt", tries)
+		CountEventConsumed(c.service, envelope.GetRoutingKey(), "failed")
+		_ = delivery.Nack(false, false)
+		return
+	}
+
+	log.Warn("обработка не удалась, вернём в очередь", "error", err, "attempt", tries)
+	CountEventConsumed(c.service, envelope.GetRoutingKey(), "retried")
+
+	pause := time.Duration(tries) * retryDelay
+	if pause > retryDelayMax {
+		pause = retryDelayMax
+	}
+	select {
+	case <-ctx.Done():
+	case <-time.After(pause):
+	}
+	_ = delivery.Nack(false, true)
+}
+
 func (c *Consumer) dispatch(ctx context.Context, delivery amqp.Delivery) {
 	var envelope eventsv1.EventEnvelope
 	if err := protojson.Unmarshal(delivery.Body, &envelope); err != nil {
@@ -123,10 +186,8 @@ func (c *Consumer) dispatch(ctx context.Context, delivery amqp.Delivery) {
 	}
 
 	if err := handler(ctx, &envelope); err != nil {
-		log.Error("обработка не удалась", "error", err)
 		FailSpan(span, err)
-		CountEventConsumed(c.service, envelope.GetRoutingKey(), "failed")
-		_ = delivery.Nack(false, false)
+		c.retryOrBury(ctx, delivery, &envelope, err, log)
 		return
 	}
 

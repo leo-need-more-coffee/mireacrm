@@ -97,12 +97,27 @@ jobs:
           pip install ruff
           ruff check libs/py-common
 
-      - name: Обвяз ставится сам по себе
-        # Ядро без дополнений — то, что берёт шлюз. Если сюда протечёт
-        # импорт базы или брокера, поломка вылезет здесь, а не в его образе.
+      - name: Ядро ставится без дополнений
+        # Шлюз берёт только ядро, поэтому в его образе нет ни драйвера базы,
+        # ни клиента брокера, ни gRPC. Проверка идёт в отдельном окружении:
+        # в общем дополнения уже стоят ради тестов, и импорт прошёл бы
+        # в любом случае. Протёкший в ядро импорт вылезет здесь, а не
+        # в собранном образе шлюза.
         run: |
-          pip install ./gen/python ./libs/py-common
-          python -c "import mireacrm_common.tracing, mireacrm_common.observability"
+          python -m venv /tmp/core-only
+          /tmp/core-only/bin/pip install --quiet ./libs/py-common
+          /tmp/core-only/bin/python - <<'CHECK'
+          import mireacrm_common.config, mireacrm_common.errors
+          import mireacrm_common.observability, mireacrm_common.tracing
+          print("ядро обвяза импортируется без дополнений")
+          CHECK
+
+      - name: Тесты Python-обвяза
+        working-directory: libs/py-common
+        run: |
+          pip install ../../gen/python
+          pip install ".[db,events,grpc,dev]"
+          python -m pytest -q
 
       - name: Go-обвяз
         working-directory: libs/go-common

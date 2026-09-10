@@ -13,6 +13,7 @@ from google.protobuf.json_format import Parse, ParseError
 from mirea.events.v1 import events_pb2
 
 from mireacrm_common import observability, tracing
+from mireacrm_common.errors import InvalidArgumentError
 
 log = logging.getLogger(__name__)
 
@@ -21,6 +22,32 @@ Handler = Callable[[events_pb2.EventEnvelope], Awaitable[None]]
 # Без ограничения брокер вывалит в потребителя всю очередь разом, и при
 # падении процесса вся пачка вернётся необработанной.
 PREFETCH = 16
+
+# Ошибка обработчика чаще всего транзиентная: сосед перезапускается, база
+# моргнула. Повторить безопасно — обработчики идемпотентны, отметка об
+# обработке пишется той же транзакцией, что и эффект. Поэтому событие
+# возвращается в очередь, а не уходит в dead-letter с первой же осечки:
+# иначе перезапуск соседа навсегда терял бы счёт или списание материалов.
+RETRY_LIMIT = 5
+
+# Пауза растёт с попытками: без неё лимит сгорает за миллисекунды, пока
+# сосед ещё поднимается, и повтор не успевает ничего исправить.
+RETRY_DELAY = 0.5
+RETRY_DELAY_MAX = 5.0
+
+# Повторять нечего: payload не проходит проверку, и следующая попытка
+# разобьётся о то же самое.
+PERMANENT = (InvalidArgumentError,)
+
+
+def _attempt(message: aio_pika.abc.AbstractIncomingMessage) -> int:
+    """Какая это попытка по счёту. Счётчик ведёт брокер: quorum-очередь
+    проставляет x-delivery-count при каждом возврате."""
+    headers = message.headers or {}
+    try:
+        return int(headers.get("x-delivery-count", 0)) + 1
+    except (TypeError, ValueError):
+        return 1
 
 
 class Consumer:
@@ -89,17 +116,39 @@ class Consumer:
 
         try:
             await handler(envelope)
-        except Exception:
-            log.exception(
-                "обработка не удалась: %s, event_id=%s, trace_id=%s",
-                envelope.routing_key, envelope.event_id, tracing.trace_id(),
-            )
-            # Повторять бессмысленно или опасно — в dead-letter.
-            observability.EVENTS_CONSUMED.labels(
-                self._service, envelope.routing_key, "failed").inc()
-            await message.reject(requeue=False)
+        except Exception as exc:
+            await self._retry_or_bury(message, envelope, exc)
             return
 
         observability.EVENTS_CONSUMED.labels(
             self._service, envelope.routing_key, "handled").inc()
         await message.ack()
+
+    async def _retry_or_bury(
+        self,
+        message: aio_pika.abc.AbstractIncomingMessage,
+        envelope: events_pb2.EventEnvelope,
+        exc: BaseException,
+    ) -> None:
+        attempt = _attempt(message)
+        permanent = isinstance(exc, PERMANENT)
+        exhausted = attempt >= RETRY_LIMIT
+
+        if permanent or exhausted:
+            log.exception(
+                "обработка не удалась окончательно: %s, event_id=%s, попытка %s, trace_id=%s",
+                envelope.routing_key, envelope.event_id, attempt, tracing.trace_id(),
+            )
+            observability.EVENTS_CONSUMED.labels(
+                self._service, envelope.routing_key, "failed").inc()
+            await message.reject(requeue=False)
+            return
+
+        log.warning(
+            "обработка не удалась, вернём в очередь: %s, event_id=%s, попытка %s, trace_id=%s: %s",
+            envelope.routing_key, envelope.event_id, attempt, tracing.trace_id(), exc,
+        )
+        observability.EVENTS_CONSUMED.labels(
+            self._service, envelope.routing_key, "retried").inc()
+        await asyncio.sleep(min(RETRY_DELAY * attempt, RETRY_DELAY_MAX))
+        await message.nack(requeue=True)

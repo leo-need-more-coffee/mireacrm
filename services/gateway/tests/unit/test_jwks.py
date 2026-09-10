@@ -32,9 +32,14 @@ class CountingKeycloak:
         self.calls += 1
         return httpx.Response(self._status, json=JWKS if self._status == 200 else {})
 
-    def store(self, cooldown: float = 30.0) -> KeyStore:
+    def store(self, cooldown: float = 30.0, retry_cooldown: float = 2.0) -> KeyStore:
         transport = httpx.MockTransport(self.handler)
-        return KeyStore("http://keycloak/certs", cooldown, httpx.AsyncClient(transport=transport))
+        return KeyStore(
+            "http://keycloak/certs",
+            cooldown,
+            httpx.AsyncClient(transport=transport),
+            retry_cooldown,
+        )
 
 
 class TestKeyStore:
@@ -75,3 +80,25 @@ class TestKeyStore:
         store = CountingKeycloak(status=500).store()
         assert await store.refresh() is False
         assert store.loaded is False
+
+    async def test_unreachable_keycloak_is_not_hammered(self) -> None:
+        """Пауза считается по попытке, а не по удаче.
+
+        Иначе ограничение частоты отключается ровно тогда, когда нужнее
+        всего: неудача не двигает отметку времени, и каждый запрос идёт
+        в недоступный Keycloak ждать свой таймаут.
+        """
+        keycloak = CountingKeycloak(status=500)
+        store = keycloak.store(retry_cooldown=60.0)
+        for _ in range(20):
+            assert await store.key("live") is None
+        assert keycloak.calls == 1
+
+    async def test_recovery_not_delayed_by_full_cooldown(self) -> None:
+        """После неудачи ждём коротко: Keycloak мог подняться через секунду,
+        а держать отказ полминуты означало бы отвергать годные токены."""
+        keycloak = CountingKeycloak(status=500)
+        store = keycloak.store(cooldown=60.0, retry_cooldown=0.0)
+        assert await store.key("live") is None
+        assert await store.key("live") is None
+        assert keycloak.calls == 2

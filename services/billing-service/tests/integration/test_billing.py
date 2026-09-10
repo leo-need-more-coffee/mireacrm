@@ -1,5 +1,6 @@
 """Домен против настоящего Postgres."""
 
+import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -74,6 +75,26 @@ class TestPayment:
 
         with pytest.raises(ConflictError):
             await domain.pay_invoice(session, invoice.id)
+
+    async def test_concurrent_payment_pays_once(self, context, session, publisher):
+        """Две одновременные оплаты одного счёта: пройти должна ровно одна.
+
+        Проверка «прочитать, сравнить, записать» здесь не годится — оба
+        запроса увидели бы `issued`. Решает условие в WHERE, как и захват
+        слота в booking.
+        """
+        invoice = await domain.issue_invoice(session, uuid.uuid4(), issue_data(), publisher)
+
+        async def pay():
+            async with context.session() as db:
+                return await domain.pay_invoice(db, invoice.id)
+
+        results = await asyncio.gather(pay(), pay(), return_exceptions=True)
+
+        paid = [item for item in results if isinstance(item, models.Invoice)]
+        conflicts = [item for item in results if isinstance(item, ConflictError)]
+        assert len(paid) == 1, results
+        assert len(conflicts) == 1, results
 
     async def test_unknown_invoice(self, session, publisher):
         with pytest.raises(NotFoundError):

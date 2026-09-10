@@ -17,6 +17,10 @@ dependencies = [
 db = ["sqlalchemy[asyncio]>=2.0.36", "asyncpg>=0.30"]
 events = ["aio-pika>=9.5", "protobuf>=5.28", "mirea-contracts"]
 grpc = ["grpcio>=1.68", "grpcio-reflection>=1.68", "protobuf>=5.28", "mirea-contracts"]
+dev = ["pytest>=8.3", "pytest-asyncio>=0.24"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
 
 [build-system]
 requires = ["setuptools>=68"]

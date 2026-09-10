@@ -52,7 +52,8 @@
       "auto_delete": false,
       "arguments": {
         "x-dead-letter-exchange": "mirea.events.dlx",
-        "x-queue-type": "quorum"
+        "x-queue-type": "quorum",
+        "x-delivery-limit": 10
       }
     },
     {
@@ -62,7 +63,8 @@
       "auto_delete": false,
       "arguments": {
         "x-dead-letter-exchange": "mirea.events.dlx",
-        "x-queue-type": "quorum"
+        "x-queue-type": "quorum",
+        "x-delivery-limit": 10
       }
     },
     {
@@ -72,7 +74,8 @@
       "auto_delete": false,
       "arguments": {
         "x-dead-letter-exchange": "mirea.events.dlx",
-        "x-queue-type": "quorum"
+        "x-queue-type": "quorum",
+        "x-delivery-limit": 10
       }
     },
     {
@@ -82,7 +85,8 @@
       "auto_delete": false,
       "arguments": {
         "x-dead-letter-exchange": "mirea.events.dlx",
-        "x-queue-type": "quorum"
+        "x-queue-type": "quorum",
+        "x-delivery-limit": 10
       }
     },
     {
@@ -92,7 +96,8 @@
       "auto_delete": false,
       "arguments": {
         "x-dead-letter-exchange": "mirea.events.dlx",
-        "x-queue-type": "quorum"
+        "x-queue-type": "quorum",
+        "x-delivery-limit": 10
       }
     },
     {

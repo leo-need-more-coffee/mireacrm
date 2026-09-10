@@ -21,6 +21,7 @@ manuals/
 # Артефакты установки
 *.egg-info/
 /gen/python/build/
+/libs/py-common/build/
 /gen/python/dist/
 
 # Внутренние заметки — не для сдачи

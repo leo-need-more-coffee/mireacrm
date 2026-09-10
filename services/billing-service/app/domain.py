@@ -7,7 +7,7 @@ from mirea.common.v1 import common_pb2
 from mirea.events.v1 import events_pb2
 from mireacrm_common.errors import ConflictError, NotFoundError
 from mireacrm_common.events import EventPublisher
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -81,14 +81,39 @@ async def get_invoice(session: AsyncSession, invoice_id: uuid.UUID) -> models.In
 
 
 async def pay_invoice(session: AsyncSession, invoice_id: uuid.UUID) -> models.Invoice:
-    invoice = await get_invoice(session, invoice_id)
-    if invoice.status is not models.InvoiceStatus.ISSUED:
-        raise ConflictError(f"счёт не в статусе {models.InvoiceStatus.ISSUED.value!r}")
+    """Отмечает счёт оплаченным. Повторная оплата — конфликт, а не успех.
 
-    invoice.status = models.InvoiceStatus.PAID
-    invoice.paid_at = datetime.now(UTC)
+    Смена статуса выполняется одним условным UPDATE: прочитать, проверить и
+    записать по отдельности означало бы, что два одновременных запроса на
+    оплату оба увидят `issued` и оба её проведут. Условие в WHERE решает это
+    в базе, как и захват слота в booking, и не держит блокировку на время
+    начисления баллов, которое идёт следом по gRPC.
+    """
+    statement = (
+        update(models.Invoice)
+        .where(
+            models.Invoice.id == invoice_id,
+            models.Invoice.status == models.InvoiceStatus.ISSUED,
+        )
+        .values(status=models.InvoiceStatus.PAID, paid_at=datetime.now(UTC))
+        .returning(models.Invoice)
+        # populate_existing обязателен: счёт уже может лежать в identity map
+        # сессии со старым статусом, и без этого вернётся он, а не строка,
+        # которую база отдала из RETURNING.
+        .execution_options(synchronize_session=False, populate_existing=True)
+    )
+    invoice = await session.scalar(statement)
+    if invoice is None:
+        # Ноль строк — либо счёта нет вовсе, либо он уже не `issued`.
+        # Разделить эти случаи можно только отдельным чтением; менять оно
+        # ничего не меняет, поэтому идёт в той же транзакции.
+        existing = await get_invoice(session, invoice_id)
+        raise ConflictError(
+            f"счёт в статусе {existing.status.value!r}, "
+            f"оплатить можно только {models.InvoiceStatus.ISSUED.value!r}"
+        )
+
     await session.commit()
-    await session.refresh(invoice)
     return invoice
 
 

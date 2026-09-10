@@ -22,9 +22,11 @@ class FakeCore:
             "role": "specialist",
         })
 
-    def directory(self, ttl: float = 60.0) -> EmployeeDirectory:
+    def directory(
+        self, ttl: float = 60.0, missing_ttl: float = 5.0, capacity: int = 4096
+    ) -> EmployeeDirectory:
         client = httpx.AsyncClient(transport=httpx.MockTransport(self.handler))
-        return EmployeeDirectory("http://core:8001", ttl, client)
+        return EmployeeDirectory("http://core:8001", ttl, client, missing_ttl, capacity)
 
 
 class TestResolution:
@@ -81,3 +83,36 @@ class TestCoreUnavailable:
 
     async def test_unexpected_status_denies_access(self) -> None:
         assert await FakeCore(status=500).directory().employee_id(SUBJECT) == ""
+
+
+class TestMissingAccount:
+    async def test_absence_expires_sooner_than_match(self) -> None:
+        """Сотрудника только что привязали к учётной записи.
+
+        Пока отсутствие лежит в кэше, специалист получает 403 на свои же
+        визиты, и выглядит это как проблема с правами, а не как кэш.
+        Поэтому отрицательный ответ живёт заметно меньше положительного.
+        """
+        core = FakeCore(status=404)
+        directory = core.directory(ttl=60.0, missing_ttl=0.0)
+        assert await directory.employee_id(SUBJECT) == ""
+        assert await directory.employee_id(SUBJECT) == ""
+        assert core.calls == 2
+
+    async def test_match_still_cached(self) -> None:
+        core = FakeCore()
+        directory = core.directory(ttl=60.0, missing_ttl=0.0)
+        assert await directory.employee_id(SUBJECT) == EMPLOYEE
+        assert await directory.employee_id(SUBJECT) == EMPLOYEE
+        assert core.calls == 1
+
+
+class TestCapacity:
+    async def test_cache_does_not_grow_without_bound(self) -> None:
+        """Кэш живёт столько же, сколько процесс, и растёт по числу
+        когда-либо заходивших. Без вытеснения это утечка."""
+        core = FakeCore()
+        directory = core.directory(capacity=8)
+        for number in range(50):
+            await directory.employee_id(f"subject-{number}")
+        assert len(directory._cache) <= 8

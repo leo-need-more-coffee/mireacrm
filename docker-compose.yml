@@ -25,10 +25,17 @@ services:
       # Меняли init-databases.sh — нужен docker compose down -v.
       - ./deploy/postgres/init-databases.sh:/docker-entrypoint-initdb.d/10-init-databases.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      # Через -h проверка идёт по TCP, а не по unix-сокету. Разница
+      # принципиальна на первом запуске: пока выполняются скрипты из
+      # docker-entrypoint-initdb.d, образ держит временный сервер, доступный
+      # только через сокет. Проверка по сокету в этот момент зеленеет, все
+      # зависимые сервисы стартуют — и получают connection refused, потому
+      # что снаружи порт ещё закрыт. С холодным томом это гарантированное
+      # падение восьми контейнеров на docker compose up.
+      test: ["CMD-SHELL", "pg_isready -U postgres -h 127.0.0.1 -p 5432"]
       interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 20
     networks: [mirea]
 
   # ---------------------------------------------------------------- RabbitMQ
