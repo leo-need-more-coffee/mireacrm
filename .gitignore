@@ -22,3 +22,6 @@ manuals/
 *.egg-info/
 /gen/python/build/
 /gen/python/dist/
+
+# Внутренние заметки — не для сдачи
+/notes/
