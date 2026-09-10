@@ -15,17 +15,21 @@ type Handler struct {
 	service *inventory.Service
 }
 
-func NewRouter(service *inventory.Service, probes ...infra.Probe) http.Handler {
+func NewRouter(
+	service *inventory.Service, serviceName string, probes ...infra.Probe,
+) http.Handler {
 	handler := &Handler{service: service}
 
 	router := chi.NewRouter()
-	router.Use(infra.TraceMiddleware, infra.IdentityMiddleware)
+	router.Use(infra.TraceMiddleware, infra.IdentityMiddleware,
+		infra.MetricsMiddleware(serviceName))
 
 	router.Get("/branches/{branchID}/stock", handler.list)
 	router.Get("/branches/{branchID}/stock/low", handler.listLow)
 	router.Post("/branches/{branchID}/stock/replenish", handler.replenish)
 	router.Put("/branches/{branchID}/stock/{consumableID}/threshold", handler.setThreshold)
 
+	router.Get("/metrics", infra.MetricsHandler().ServeHTTP)
 	router.Get("/healthz", infra.LivenessHandler())
 	router.Get("/readyz", infra.ReadinessHandler(probes...))
 	return router

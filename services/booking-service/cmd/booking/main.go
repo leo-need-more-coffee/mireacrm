@@ -46,6 +46,17 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	shutdownTracing, err := infra.SetupTracing(ctx, cfg.ServiceName, cfg.OTLPEndpoint)
+	if err != nil {
+		return err
+	}
+	// Экспортёр копит спаны пачками: без остановки последняя пачка теряется.
+	defer func() {
+		flush, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = shutdownTracing(flush)
+	}()
+
 	if err := infra.Migrate(ctx, cfg.PostgresDSN, migrations.Files); err != nil {
 		return err
 	}
@@ -77,7 +88,7 @@ func run() error {
 
 	service := booking.New(booking.NewRepository(pool), directory, events, realtime)
 
-	router := api.NewRouter(service,
+	router := api.NewRouter(service, cfg.ServiceName,
 		infra.Probe{Name: "database", Check: pool.Ping},
 		infra.Probe{Name: "broker", Check: events.Ping},
 		infra.Probe{Name: "realtime", Check: realtime.Ping},
@@ -91,7 +102,7 @@ func run() error {
 
 	server := &http.Server{
 		Addr:    ":" + strconv.Itoa(cfg.HTTPPort),
-		Handler: router,
+		Handler: infra.HTTPHandler(router, cfg.ServiceName),
 	}
 
 	errc := make(chan error, 2)

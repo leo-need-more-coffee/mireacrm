@@ -379,3 +379,64 @@ class AccessControl(Diagram):
 
         self.caption(self.width / 2, 8,
                      "заслоны проходятся по порядку: отказ на любом прекращает обработку")
+
+
+class TraceWaterfall(Diagram):
+    """Трасса одного запроса: участки работы сервисов на общей шкале."""
+
+    MARGIN = 4
+    REPLY_AT = 0.30
+
+    def draw(self):
+        label_width = 120
+        left = self.MARGIN + label_width
+        width = self.width - left - self.MARGIN
+        row = 14
+        top = self.height - 18
+
+        # (глубина, сервис, операция, начало и конец в долях трассы)
+        spans = [
+            (0, "gateway", "POST /appointments/*/complete", 0.00, 1.00),
+            (1, "booking", "закрытие визита", 0.05, 0.30),
+            (2, "booking", "publish appointment.completed", 0.20, 0.27),
+            (2, "inventory", "consume", 0.32, 0.62),
+            (3, "catalog", "GetConsumptionNorms", 0.38, 0.52),
+            (2, "billing", "consume", 0.36, 0.78),
+            (3, "booking", "GetAppointment", 0.40, 0.55),
+            (2, "analytics", "consume", 0.34, 0.70),
+        ]
+
+        for index, (depth, service, operation, begin, end) in enumerate(spans):
+            y = top - index * row
+            self.caption(self.MARGIN + depth * 8, y, service, size=6.6,
+                         anchor="l", grey=False)
+
+            x1 = left + width * begin
+            x2 = max(left + width * end, x1 + 4)
+
+            c = self.canv
+            c.saveState()
+            c.setStrokeColor(INK)
+            c.setLineWidth(0.6)
+            c.setFillColor(FILL if depth else colors.white)
+            c.rect(x1, y - 2.8, x2 - x1, 9, stroke=1, fill=1)
+            c.restoreState()
+
+            # Подпись уходит правее полосы, если внутрь не помещается:
+            # иначе она вылезает за рамку и наезжает на соседние участки.
+            size = 6.2
+            text_width = self.canv.stringWidth(operation, self.font, size)
+            if text_width + 6 <= x2 - x1:
+                self.caption(x1 + 3, y, operation, size=size, anchor="l")
+            else:
+                self.caption(x2 + 3, y, operation, size=size, anchor="l")
+
+        base = top - len(spans) * row - 6
+        reply = left + width * self.REPLY_AT
+        self.line([(left, base), (left + width, base)], arrow=False, dash=DOT, width=0.4)
+        self.line([(reply, base - 3), (reply, base + 5)], arrow=False, width=0.8)
+        self.caption(reply, base - 11, "ответ клиенту отправлен здесь", size=6.2)
+
+        self.caption(self.width / 2, 4,
+                     "работа после ответа продолжается: потребители событий "
+                     "остаются в той же трассе")

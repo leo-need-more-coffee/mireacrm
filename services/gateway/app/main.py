@@ -5,7 +5,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from app.api import auth, meta
-from app.infra import tracing
+from app.infra import observability, tracing
 from app.infra.config import Settings, get_settings
 from app.infra.errors import (
     ForbiddenError,
@@ -35,6 +35,7 @@ _HTTP_CODES: dict[type[Exception], int] = {
 def create_app(context: AppContext) -> FastAPI:
     app = FastAPI(title="Mirea CRM Gateway", version="0.1.0")
     app.state.context = context
+    observability.install(app, context.settings.service_name)
 
     app.include_router(auth.router)
     app.include_router(meta.router)
@@ -67,6 +68,10 @@ def create_app(context: AppContext) -> FastAPI:
     @app.api_route("/{path:path}", methods=_PROXIED_METHODS, include_in_schema=False)
     async def dispatch(path: str, request: Request):
         route = context.router.resolve(request.method, f"/{path}")
+        # Метка метрики и имя спана — шаблон чужого маршрута, а не путь
+        # с идентификаторами.
+        request.state.metrics_route = route.path
+        observability.name_span(f"{request.method} {route.path}")
         principal = await context.verifier.verify(request.headers.get("authorization"))
         if not principal.has_any(route.roles):
             raise ForbiddenError(route.roles, principal.roles)
@@ -103,11 +108,18 @@ async def serve(settings: Settings | None = None) -> None:
         format="%(levelname)-8s %(name)s: %(message)s",
     )
 
+    # Инструментация клиента HTTP ставится до создания соединений с сервисами.
+    traced = observability.setup_tracing(settings.service_name, settings.otlp_endpoint)
+    if traced:
+        observability.instrument_httpx()
+
     async with build_context(settings) as context:
+        app = create_app(context)
+        if traced:
+            observability.instrument_app(app)
+
         server = uvicorn.Server(
-            uvicorn.Config(
-                create_app(context), host="0.0.0.0", port=settings.http_port, log_level="info"
-            )
+            uvicorn.Config(app, host="0.0.0.0", port=settings.http_port, log_level="info")
         )
         log.info("шлюз слушает :%s, realm %s", settings.http_port, settings.oidc_issuer)
         await server.serve()

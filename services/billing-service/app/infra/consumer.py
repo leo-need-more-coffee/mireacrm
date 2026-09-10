@@ -12,7 +12,7 @@ import aio_pika
 from google.protobuf.json_format import Parse, ParseError
 from mirea.events.v1 import events_pb2
 
-from app.infra import tracing
+from app.infra import observability, tracing
 
 log = logging.getLogger(__name__)
 
@@ -24,7 +24,8 @@ PREFETCH = 16
 
 
 class Consumer:
-    def __init__(self, amqp_url: str, queue: str) -> None:
+    def __init__(self, amqp_url: str, queue: str, service: str = "") -> None:
+        self._service = service or queue
         self._url = amqp_url
         self._queue_name = queue
         self._routes: dict[str, Handler] = {}
@@ -59,16 +60,30 @@ class Consumer:
             envelope = Parse(message.body.decode(), events_pb2.EventEnvelope())
         except (ParseError, UnicodeDecodeError):
             log.exception("не разобрали событие, message_id=%s", message.message_id)
+            # Ключ маршрутизации берём из свойства сообщения: конверт не разобран,
+            # а без метки такие отказы не видны в статистике вовсе.
+            observability.EVENTS_CONSUMED.labels(
+                self._service, message.type or "unknown", "unparsable").inc()
             await message.reject(requeue=False)
             return
 
         # Трасса продолжается: контекст пришёл вместе с событием.
+        with observability.consume_span(envelope.routing_key, envelope.traceparent):
+            await self._dispatch(message, envelope)
+
+    async def _dispatch(
+        self,
+        message: aio_pika.abc.AbstractIncomingMessage,
+        envelope: events_pb2.EventEnvelope,
+    ) -> None:
         tracing.set_current(tracing.parse(envelope.traceparent))
 
         handler = self._routes.get(envelope.routing_key, self._fallback)
         if handler is None:
             # На ключ никто не подписан — подтверждаем, иначе очередь встанет.
             log.warning("обработчик не найден: %s", envelope.routing_key)
+            observability.EVENTS_CONSUMED.labels(
+                self._service, envelope.routing_key, "skipped").inc()
             await message.ack()
             return
 
@@ -80,7 +95,11 @@ class Consumer:
                 envelope.routing_key, envelope.event_id, tracing.trace_id(),
             )
             # Повторять бессмысленно или опасно — в dead-letter.
+            observability.EVENTS_CONSUMED.labels(
+                self._service, envelope.routing_key, "failed").inc()
             await message.reject(requeue=False)
             return
 
+        observability.EVENTS_CONSUMED.labels(
+            self._service, envelope.routing_key, "handled").inc()
         await message.ack()

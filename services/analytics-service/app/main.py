@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 
 from app.api import reports
-from app.infra import identity, tracing
+from app.infra import identity, observability, tracing
 from app.infra.config import Settings, get_settings
 from app.infra.errors import (
     ConflictError,
@@ -33,6 +33,7 @@ _HTTP_CODES: dict[type[Exception], int] = {
 def create_app(context: AppContext) -> FastAPI:
     app = FastAPI(title="Analytics Service", version="0.1.0")
     app.state.context = context
+    observability.install(app, context.settings.service_name)
 
     app.include_router(reports.router)
 
@@ -83,20 +84,29 @@ async def serve(settings: Settings | None = None) -> None:
         format="%(levelname)-8s %(name)s: %(message)s",
     )
 
+    # gRPC инструментируется до создания каналов: инструментация подменяет
+    # фабрики, а уже открытые каналы её не подхватят.
+    traced = observability.setup_tracing(settings.service_name, settings.otlp_endpoint)
+    if traced:
+        observability.instrument_grpc()
+
     from app import handlers
     from app.clients import CoreClient
     from app.infra.consumer import Consumer
 
     async with build_context(settings, CoreClient(settings.core_addr)) as context:
-        consumer = Consumer(settings.amqp_url, QUEUE)
+        consumer = Consumer(settings.amqp_url, QUEUE, settings.service_name)
         # Аналитика слушает весь поток: биндинг `#` объявлен в definitions.json.
         consumer.handle_all(handlers.build(context))
         await consumer.start()
 
+        app = create_app(context)
+        if traced:
+            observability.instrument_app(app)
+            observability.instrument_database(context.engine)
+
         http = uvicorn.Server(
-            uvicorn.Config(
-                create_app(context), host="0.0.0.0", port=settings.http_port, log_level="info"
-            )
+            uvicorn.Config(app, host="0.0.0.0", port=settings.http_port, log_level="info")
         )
 
         try:

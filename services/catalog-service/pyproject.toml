@@ -15,6 +15,12 @@ dependencies = [
     "grpcio-reflection>=1.68",
     "aio-pika>=9.5",
     "mirea-contracts",
+    "prometheus-client>=0.21",
+    "opentelemetry-sdk>=1.28",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.28",
+    "opentelemetry-instrumentation-fastapi>=0.49b0",
+    "opentelemetry-instrumentation-sqlalchemy>=0.49b0",
+    "opentelemetry-instrumentation-grpc>=0.49b0",
 ]
 
 [build-system]

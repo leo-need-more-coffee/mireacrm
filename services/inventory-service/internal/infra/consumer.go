@@ -19,10 +19,11 @@ type Consumer struct {
 	conn    *amqp.Connection
 	channel *amqp.Channel
 	queue   string
+	service string
 	routes  map[string]Handler
 }
 
-func NewConsumer(url, queue string) (*Consumer, error) {
+func NewConsumer(url, queue, service string) (*Consumer, error) {
 	conn, err := amqp.Dial(url)
 	if err != nil {
 		return nil, fmt.Errorf("подключение к RabbitMQ: %w", err)
@@ -40,7 +41,10 @@ func NewConsumer(url, queue string) (*Consumer, error) {
 		return nil, fmt.Errorf("prefetch: %w", err)
 	}
 
-	return &Consumer{conn: conn, channel: channel, queue: queue, routes: map[string]Handler{}}, nil
+	return &Consumer{
+		conn: conn, channel: channel, queue: queue, service: service,
+		routes: map[string]Handler{},
+	}, nil
 }
 
 func (c *Consumer) Handle(routingKey string, handler Handler) {
@@ -82,11 +86,21 @@ func (c *Consumer) dispatch(ctx context.Context, delivery amqp.Delivery) {
 	var envelope eventsv1.EventEnvelope
 	if err := protojson.Unmarshal(delivery.Body, &envelope); err != nil {
 		slog.Error("не разобрали событие", "error", err, "message_id", delivery.MessageId)
+		// Ключ берём из свойства сообщения: конверт не разобран, а без метки
+		// такие отказы не видны в статистике вовсе.
+		key := delivery.Type
+		if key == "" {
+			key = "unknown"
+		}
+		CountEventConsumed(c.service, key, "unparsable")
 		_ = delivery.Nack(false, false)
 		return
 	}
 
 	// Трасса продолжается: контекст пришёл вместе с событием.
+	ctx, span := ConsumeSpan(ctx, envelope.GetRoutingKey(), envelope.GetTraceparent())
+	defer span.End()
+
 	ctx = WithTraceparent(ctx, ParseTraceparent(envelope.GetTraceparent()))
 	log := slog.With(
 		"routing_key", envelope.GetRoutingKey(),
@@ -98,16 +112,20 @@ func (c *Consumer) dispatch(ctx context.Context, delivery amqp.Delivery) {
 	if !ok {
 		// На ключ никто не подписан — подтверждаем, иначе очередь встанет.
 		log.Warn("обработчик не найден")
+		CountEventConsumed(c.service, envelope.GetRoutingKey(), "skipped")
 		_ = delivery.Ack(false)
 		return
 	}
 
 	if err := handler(ctx, &envelope); err != nil {
 		log.Error("обработка не удалась", "error", err)
+		FailSpan(span, err)
+		CountEventConsumed(c.service, envelope.GetRoutingKey(), "failed")
 		_ = delivery.Nack(false, false)
 		return
 	}
 
 	log.Debug("обработано")
+	CountEventConsumed(c.service, envelope.GetRoutingKey(), "handled")
 	_ = delivery.Ack(false)
 }

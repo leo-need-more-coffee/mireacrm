@@ -100,18 +100,66 @@ services:
         condition: service_healthy
     networks: [mirea]
 
-  # ------------------------------------------------------- Jaeger (ПР10)
-  # Поднимается только с профилем observability, чтобы не висел зря.
+  # ------------------------------------------------------- Наблюдаемость
+  # Трассировка: куда сервисы шлют спаны по OTLP.
   jaeger:
-    image: jaegertracing/all-in-one:1.62
+    image: jaegertracing/all-in-one:1.76.0
     container_name: mirea-jaeger
-    profiles: [observability]
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
     ports:
-      - "16686:16686"   # UI
-      - "4317:4317"     # OTLP gRPC — сюда шлют трейсы сервисы
-      - "4318:4318"     # OTLP HTTP
+      - "${JAEGER_UI_PORT:-16686}:16686"
+      - "127.0.0.1:4317:4317"   # OTLP gRPC — сюда шлют трейсы сервисы
+      - "127.0.0.1:4318:4318"   # OTLP HTTP
+    networks: [mirea]
+
+  # Метрики: собирает /metrics со всех сервисов и с экспортёра базы.
+  prometheus:
+    image: prom/prometheus:v3.13.3
+    container_name: mirea-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d
+      - --web.enable-lifecycle
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    networks: [mirea]
+
+  # Метрики самой базы: соединения, транзакции, размеры, блокировки.
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.20.1
+    container_name: mirea-postgres-exporter
+    environment:
+      DATA_SOURCE_NAME: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/postgres?sslmode=disable
+      PG_EXPORTER_AUTO_DISCOVER_DATABASES: "true"
+      PG_EXPORTER_EXCLUDE_DATABASES: template0,template1
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [mirea]
+
+  # Дашборды. Источники данных и панели заводятся из deploy/grafana,
+  # руками в интерфейсе настраивать нечего.
+  grafana:
+    image: grafana/grafana:13.0.8
+    container_name: mirea-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    depends_on:
+      - prometheus
     networks: [mirea]
 
   # ---------------------------------------------------------------- Сервисы
@@ -124,6 +172,7 @@ services:
     container_name: mirea-gateway
     environment:
       GATEWAY_HTTP_PORT: 8000
+      GATEWAY_OTLP_ENDPOINT: jaeger:4317
       # iss в токене — адрес, по которому Keycloak видел браузер;
       # ключи шлюз забирает изнутри сети. Адреса разные, и оба нужны.
       GATEWAY_OIDC_ISSUER: http://localhost:${KEYCLOAK_PORT:-8080}/realms/mirea
@@ -156,6 +205,7 @@ services:
       CORE_POSTGRES_DSN: postgresql+asyncpg://core_user:core_pass@postgres:5432/core_db
       CORE_AMQP_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD:-guest}@rabbitmq:5672/
       CORE_HTTP_PORT: 8001
+      CORE_OTLP_ENDPOINT: jaeger:4317
       CORE_GRPC_PORT: 9001
     ports:
       - "127.0.0.1:8001:8001"
@@ -181,6 +231,7 @@ services:
       CATALOG_POSTGRES_DSN: postgresql+asyncpg://catalog_user:catalog_pass@postgres:5432/catalog_db
       CATALOG_AMQP_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD:-guest}@rabbitmq:5672/
       CATALOG_HTTP_PORT: 8002
+      CATALOG_OTLP_ENDPOINT: jaeger:4317
       CATALOG_GRPC_PORT: 9002
     ports:
       - "127.0.0.1:8002:8002"
@@ -207,6 +258,7 @@ services:
       CLIENT_AMQP_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD:-guest}@rabbitmq:5672/
       CLIENT_BOOKING_ADDR: booking-service:9003
       CLIENT_HTTP_PORT: 8005
+      CLIENT_OTLP_ENDPOINT: jaeger:4317
       CLIENT_GRPC_PORT: 9005
     ports:
       - "127.0.0.1:8005:8005"
@@ -234,6 +286,7 @@ services:
       BILLING_BOOKING_ADDR: booking-service:9003
       BILLING_CLIENT_ADDR: client-service:9005
       BILLING_HTTP_PORT: 8006
+      BILLING_OTLP_ENDPOINT: jaeger:4317
     ports:
       - "127.0.0.1:8006:8006"
     depends_on:
@@ -260,6 +313,7 @@ services:
       BOOKING_CORE_ADDR: core-service:9001
       BOOKING_CATALOG_ADDR: catalog-service:9002
       BOOKING_HTTP_PORT: 8003
+      BOOKING_OTLP_ENDPOINT: jaeger:4317
       BOOKING_GRPC_PORT: 9003
     ports:
       - "127.0.0.1:8003:8003"
@@ -290,6 +344,7 @@ services:
       INVENTORY_NATS_URL: nats://nats:4222
       INVENTORY_CATALOG_ADDR: catalog-service:9002
       INVENTORY_HTTP_PORT: 8004
+      INVENTORY_OTLP_ENDPOINT: jaeger:4317
     ports:
       - "127.0.0.1:8004:8004"
     depends_on:
@@ -316,6 +371,7 @@ services:
       NOTIFICATION_NATS_URL: nats://nats:4222
       NOTIFICATION_CLIENT_ADDR: client-service:9005
       NOTIFICATION_HTTP_PORT: 8007
+      NOTIFICATION_OTLP_ENDPOINT: jaeger:4317
     ports:
       - "127.0.0.1:8007:8007"
     depends_on:
@@ -340,6 +396,7 @@ services:
       ANALYTICS_AMQP_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD:-guest}@rabbitmq:5672/
       ANALYTICS_CORE_ADDR: core-service:9001
       ANALYTICS_HTTP_PORT: 8008
+      ANALYTICS_OTLP_ENDPOINT: jaeger:4317
     ports:
       - "127.0.0.1:8008:8008"
     depends_on:
@@ -357,6 +414,8 @@ services:
 volumes:
   postgres-data:
   rabbitmq-data:
+  prometheus-data:
+  grafana-data:
 
 networks:
   mirea:

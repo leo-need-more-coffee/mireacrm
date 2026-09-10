@@ -8,13 +8,14 @@ import (
 )
 
 type Config struct {
-	ServiceName string
-	HTTPPort    int
-	GRPCPort    int
-	AMQPURL     string
-	NATSURL     string
-	ClientAddr  string
-	Debug       bool
+	ServiceName  string
+	HTTPPort     int
+	GRPCPort     int
+	AMQPURL      string
+	NATSURL      string
+	ClientAddr   string
+	OTLPEndpoint string
+	Debug        bool
 }
 
 func LoadConfig() (Config, error) {
@@ -23,7 +24,9 @@ func LoadConfig() (Config, error) {
 		AMQPURL:     env("NOTIFICATION_AMQP_URL", "amqp://guest:guest@localhost:5672/"),
 		NATSURL:     env("NOTIFICATION_NATS_URL", "nats://localhost:4222"),
 		ClientAddr:  env("NOTIFICATION_CLIENT_ADDR", "localhost:9005"),
-		Debug:       env("NOTIFICATION_DEBUG", "false") == "true",
+		// Пустой адрес выключает экспорт трасс.
+		OTLPEndpoint: env("NOTIFICATION_OTLP_ENDPOINT", ""),
+		Debug:        env("NOTIFICATION_DEBUG", "false") == "true",
 	}
 
 	var err error

@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 
 from app.api import services
-from app.infra import identity, tracing
+from app.infra import identity, observability, tracing
 from app.infra.config import Settings, get_settings
 from app.infra.errors import (
     ConflictError,
@@ -31,6 +31,7 @@ _HTTP_CODES: dict[type[Exception], int] = {
 def create_app(context: AppContext) -> FastAPI:
     app = FastAPI(title="Catalog Service", version="0.1.0")
     app.state.context = context
+    observability.install(app, context.settings.service_name)
 
     app.include_router(services.router)
 
@@ -84,13 +85,24 @@ async def serve(settings: Settings | None = None) -> None:
         format="%(levelname)-8s %(name)s: %(message)s",
     )
 
+    # gRPC инструментируется до создания каналов: инструментация подменяет
+    # фабрики, а уже открытые каналы её не подхватят.
+    traced = observability.setup_tracing(settings.service_name, settings.otlp_endpoint)
+    if traced:
+        observability.instrument_grpc()
+
     async with build_context(settings) as context:
+        app = create_app(context)
+        if traced:
+            observability.instrument_app(app)
+            observability.instrument_database(context.engine)
+
         http = uvicorn.Server(
-            uvicorn.Config(
-                create_app(context), host="0.0.0.0", port=settings.http_port, log_level="info"
-            )
+            uvicorn.Config(app, host="0.0.0.0", port=settings.http_port, log_level="info")
         )
-        grpc_server = await build_server(settings.grpc_port, [registration(context)])
+        grpc_server = await build_server(
+            settings.grpc_port, [registration(context)], settings.service_name
+        )
 
         await grpc_server.start()
         log.info("gRPC слушает :%s", settings.grpc_port)

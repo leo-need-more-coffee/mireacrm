@@ -1,0 +1,42 @@
+# Сбор метрик со всех сервисов и с базы данных.
+#
+# Адреса статические: состав системы известен и не меняется на ходу, поэтому
+# service discovery только добавил бы движущихся частей.
+
+global:
+  scrape_interval: 10s
+  evaluation_interval: 15s
+  external_labels:
+    system: mirea-crm
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: services
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["gateway:8000"]
+        labels: { service: gateway, language: python }
+      - targets: ["core-service:8001"]
+        labels: { service: core, language: python }
+      - targets: ["catalog-service:8002"]
+        labels: { service: catalog, language: python }
+      - targets: ["booking-service:8003"]
+        labels: { service: booking, language: go }
+      - targets: ["inventory-service:8004"]
+        labels: { service: inventory, language: go }
+      - targets: ["client-service:8005"]
+        labels: { service: client, language: python }
+      - targets: ["billing-service:8006"]
+        labels: { service: billing, language: python }
+      - targets: ["notification-service:8007"]
+        labels: { service: notification, language: go }
+      - targets: ["analytics-service:8008"]
+        labels: { service: analytics, language: python }
+
+  - job_name: postgres
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+        labels: { component: database }

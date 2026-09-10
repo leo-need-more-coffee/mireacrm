@@ -168,6 +168,64 @@ gRPC-серверы поднимают `core`, `catalog`, `booking` и `client`.
 
 ---
 
+## Наблюдаемость
+
+Трассировка и метрики, обе технологии подняты вместе с системой.
+
+### Распределённая трассировка
+
+OpenTelemetry в девяти сервисах, экспорт по OTLP в Jaeger. Один запрос виден
+целиком — включая то, что происходит уже после ответа клиенту:
+
+```
+POST /appointments/{id}/complete        gateway
+  └─ POST /appointments/{id}/complete   booking      захват и закрытие визита
+      └─ publish appointment.completed  booking      событие ушло в шину
+          ├─ consume appointment.completed  inventory   → GetConsumptionNorms → catalog
+          ├─ consume appointment.completed  billing     → GetAppointment → booking
+          └─ consume appointment.completed  analytics   → витрины
+```
+
+Трасса не рвётся ни на границе языков, ни на границе брокера: контекст едет
+в поле `traceparent` конверта события, а потребитель продолжает трассу издателя.
+Для этого не понадобилось ничего изобретать — заголовок W3C ходил по системе
+с самого начала, оставалось связать его с активным спаном.
+
+Адрес коллектора задаётся переменной `<СЕРВИС>_OTLP_ENDPOINT`; пустое значение
+выключает экспорт, поэтому тесты и локальный запуск не требуют инфраструктуры.
+
+### Метрики
+
+Каждый сервис отдаёт `/metrics`, Prometheus собирает их раз в 10 секунд.
+
+| Метрика | О чём |
+|---|---|
+| `http_requests_total` | запросы по сервису, маршруту и коду ответа |
+| `http_request_duration_seconds` | гистограмма времени ответа |
+| `grpc_server_requests_total` | вызовы gRPC по методу и коду |
+| `domain_events_published_total` | публикация событий по ключу |
+| `domain_events_consumed_total` | обработка событий: `handled`, `skipped`, `failed`, `unparsable` |
+
+Метка маршрута — шаблон (`/branches/{branch_id}/employees`), а не фактический
+путь: иначе каждый идентификатор в URL заводил бы свой временной ряд.
+
+Отдельно считаются два вида отказов потребителя. `failed` — обработчик вернул
+ошибку, `unparsable` — конверт не разобрался вовсе. Второй случай особенно
+неприятен тем, что событие уходит в dead-letter молча, и без счётчика заметить
+его нечем.
+
+Метрики базы снимает `postgres_exporter`: соединения, транзакции, размеры по
+каждой из семи баз.
+
+### Дашборд
+
+Grafana заводит источники данных и панели из [`deploy/grafana`](deploy/grafana/) —
+руками настраивать нечего. Дашборд «Mirea CRM — сервисы и база»: нагрузка,
+доля ошибок, задержка по 95-му процентилю, самые медленные маршруты, поток
+событий, отказы потребителей, вызовы gRPC и состояние базы.
+
+---
+
 ## Данные
 
 База на сервис: `core_db`, `client_db`, `booking_db`, `catalog_db`, `inventory_db`,
@@ -221,13 +279,9 @@ curl -s localhost:8000/templates -H "Authorization: Bearer $TOKEN"
 | RabbitMQ, панель | http://localhost:15672 | `guest` / `guest` |
 | NATS, мониторинг | http://localhost:8222 | — |
 | Postgres | `localhost:5432` | свой пользователь на каждую базу |
-| Jaeger | http://localhost:16686 | профиль `observability` |
-
-Трассировка поднимается отдельным профилем, чтобы не висела зря:
-
-```bash
-docker compose --profile observability up -d
-```
+| Jaeger — трассировка | http://localhost:16686 | — |
+| Grafana — дашборды | http://localhost:3000 | `admin` / `admin`, чтение без входа |
+| Prometheus | http://localhost:9090 | — |
 
 Обменник `mirea.events`, очереди потребителей и dead-letter объявляются
 декларативно из [`deploy/rabbitmq/definitions.json`](deploy/rabbitmq/definitions.json):
@@ -310,8 +364,7 @@ go test -tags integration ./...    # плюс интеграционные
 Система работает целиком: запись проходит через три сервиса синхронно, завершение
 визита расходится на трёх потребителей асинхронно, аналитика видит весь поток.
 
-**В планах:** распределённая трассировка и метрики (OpenTelemetry, Jaeger,
-Prometheus, Grafana), конвейеры непрерывной интеграции.
+**В планах:** конвейеры непрерывной интеграции.
 
 ---
 
@@ -327,3 +380,4 @@ Prometheus, Grafana), конвейеры непрерывной интеграц
 | 6 | Сервисы, вложенные вызовы, Docker Compose | [`services/`](services/), `docker-compose.yml` |
 | 8 | Два вида тестирования | `tests/` в каждом сервисе |
 | 9 | Keycloak, OIDC, проверка токена на шлюзе | [`services/gateway/`](services/gateway/) |
+| 10 | Трассировка и метрики | раздел «Наблюдаемость», [`deploy/grafana`](deploy/grafana/) |

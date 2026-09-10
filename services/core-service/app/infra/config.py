@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     grpc_port: int = 9001
     amqp_url: str = "amqp://guest:guest@localhost:5672/"
     debug: bool = False
+    # Пустой адрес выключает экспорт трасс: нужен для тестов
+    # и запуска без инфраструктуры.
+    otlp_endpoint: str = ""
 
 
 @lru_cache

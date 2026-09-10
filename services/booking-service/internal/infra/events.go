@@ -65,7 +65,10 @@ func (p *EventPublisher) Publish(
 	envelope.RoutingKey = routingKey
 	envelope.OccurredAt = timestamppb.New(time.Now().UTC())
 	envelope.Producer = p.producer
-	envelope.Traceparent = Traceparent(ctx)
+	ctx, span := PublishSpan(ctx, routingKey)
+	defer span.End()
+
+	envelope.Traceparent = TraceparentFrom(ctx)
 	envelope.Actor = CallerFrom(ctx).Subject
 
 	body, err := protojson.Marshal(envelope)
@@ -81,8 +84,10 @@ func (p *EventPublisher) Publish(
 		Body:         body,
 	})
 	if err != nil {
+		FailSpan(span, err)
 		return fmt.Errorf("публикация %s: %w", routingKey, err)
 	}
+	CountEventPublished(p.producer, routingKey)
 
 	slog.DebugContext(ctx, "опубликовано", "routing_key", routingKey, "event_id", envelope.EventId)
 	return nil

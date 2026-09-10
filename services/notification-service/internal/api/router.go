@@ -21,16 +21,20 @@ type SendRequest struct {
 	Body     string    `json:"body"`
 }
 
-func NewRouter(service *notify.Service, probes ...infra.Probe) http.Handler {
+func NewRouter(
+	service *notify.Service, serviceName string, probes ...infra.Probe,
+) http.Handler {
 	handler := &Handler{service: service}
 
 	router := chi.NewRouter()
-	router.Use(infra.TraceMiddleware, infra.IdentityMiddleware)
+	router.Use(infra.TraceMiddleware, infra.IdentityMiddleware,
+		infra.MetricsMiddleware(serviceName))
 
 	router.Post("/notifications", handler.send)
 	router.Get("/notifications/{notificationID}", handler.get)
 	router.Get("/templates", handler.templates)
 
+	router.Get("/metrics", infra.MetricsHandler().ServeHTTP)
 	router.Get("/healthz", infra.LivenessHandler())
 	router.Get("/readyz", infra.ReadinessHandler(probes...))
 	return router

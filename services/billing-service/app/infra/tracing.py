@@ -7,6 +7,7 @@
 
 import re
 import secrets
+from collections.abc import Callable
 from contextvars import ContextVar
 
 HEADER = "traceparent"
@@ -15,6 +16,18 @@ HEADER = "traceparent"
 _FORMAT = re.compile(r"^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$")
 
 _current: ContextVar[str] = ContextVar("traceparent", default="")
+
+_provider: Callable[[], str] | None = None
+
+
+def use_provider(source: Callable[[], str]) -> None:
+    """Подменяет источник traceparent — например, активным спаном OpenTelemetry.
+
+    Нужно, чтобы идентификатор в событиях и логах совпадал с тем, что видно
+    в системе трассировки: два независимых идентификатора не свести.
+    """
+    global _provider
+    _provider = source
 
 
 def new_traceparent() -> str:
@@ -33,6 +46,10 @@ def set_current(value: str) -> None:
 
 
 def current() -> str:
+    if _provider is not None:
+        value = _provider()
+        if value:
+            return value
     return _current.get()
 
 

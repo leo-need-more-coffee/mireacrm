@@ -17,11 +17,14 @@ type Handler struct {
 	service *booking.Service
 }
 
-func NewRouter(service *booking.Service, probes ...infra.Probe) http.Handler {
+func NewRouter(
+	service *booking.Service, serviceName string, probes ...infra.Probe,
+) http.Handler {
 	handler := &Handler{service: service}
 
 	router := chi.NewRouter()
-	router.Use(infra.TraceMiddleware, infra.IdentityMiddleware)
+	router.Use(infra.TraceMiddleware, infra.IdentityMiddleware,
+		infra.MetricsMiddleware(serviceName))
 
 	router.Get("/branches/{branchID}/slots", handler.freeSlots)
 	router.Post("/appointments", handler.book)
@@ -29,6 +32,7 @@ func NewRouter(service *booking.Service, probes ...infra.Probe) http.Handler {
 	router.Post("/appointments/{appointmentID}/complete", handler.complete)
 	router.Post("/appointments/{appointmentID}/cancel", handler.cancel)
 
+	router.Get("/metrics", infra.MetricsHandler().ServeHTTP)
 	router.Get("/healthz", infra.LivenessHandler())
 	router.Get("/readyz", infra.ReadinessHandler(probes...))
 	return router

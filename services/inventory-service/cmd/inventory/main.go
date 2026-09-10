@@ -50,6 +50,17 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	shutdownTracing, err := infra.SetupTracing(ctx, cfg.ServiceName, cfg.OTLPEndpoint)
+	if err != nil {
+		return err
+	}
+	// Экспортёр копит спаны пачками: без остановки последняя пачка теряется.
+	defer func() {
+		flush, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = shutdownTracing(flush)
+	}()
+
 	if err := infra.Migrate(ctx, cfg.PostgresDSN, migrations.Files); err != nil {
 		return err
 	}
@@ -81,19 +92,22 @@ func run() error {
 
 	service := inventory.New(inventory.NewRepository(pool), catalog, events, realtime)
 
-	consumer, err := infra.NewConsumer(cfg.AMQPURL, queueName)
+	consumer, err := infra.NewConsumer(cfg.AMQPURL, queueName, cfg.ServiceName)
 	if err != nil {
 		return err
 	}
 	defer consumer.Close()
 	consumer.Handle("appointment.completed", writeOffHandler(service))
 
-	router := api.NewRouter(service,
+	router := api.NewRouter(service, cfg.ServiceName,
 		infra.Probe{Name: "database", Check: pool.Ping},
 		infra.Probe{Name: "broker", Check: events.Ping},
 		infra.Probe{Name: "realtime", Check: realtime.Ping},
 	)
-	server := &http.Server{Addr: ":" + strconv.Itoa(cfg.HTTPPort), Handler: router}
+	server := &http.Server{
+		Addr:    ":" + strconv.Itoa(cfg.HTTPPort),
+		Handler: infra.HTTPHandler(router, cfg.ServiceName),
+	}
 
 	errc := make(chan error, 2)
 	go func() {

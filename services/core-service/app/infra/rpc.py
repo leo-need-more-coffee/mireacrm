@@ -11,7 +11,7 @@ from google.protobuf.timestamp_pb2 import Timestamp
 from grpc_reflection.v1alpha import reflection
 from sqlalchemy.exc import IntegrityError
 
-from app.infra import identity, tracing
+from app.infra import identity, observability, tracing
 from app.infra.errors import (
     ConflictError,
     InvalidArgumentError,
@@ -21,7 +21,10 @@ from app.infra.errors import (
 
 
 class ServerInterceptor(grpc.aio.ServerInterceptor):
-    """Подхватывает контекст трассировки и маппит доменные ошибки в коды gRPC."""
+    """Подхватывает контекст вызова, маппит доменные ошибки и считает вызовы."""
+
+    def __init__(self, service: str = "") -> None:
+        self._service = service
 
     _CODES: ClassVar[dict[type[Exception], grpc.StatusCode]] = {
         NotFoundError: grpc.StatusCode.NOT_FOUND,
@@ -38,15 +41,24 @@ class ServerInterceptor(grpc.aio.ServerInterceptor):
         inner: Callable[..., Awaitable] = handler.unary_unary
         metadata = dict(handler_call_details.invocation_metadata or ())
 
+        method = handler_call_details.method
+
         async def wrapper(request, context):
             tracing.set_current(tracing.parse(metadata.get(tracing.HEADER)))
             identity.set_current(identity.parse(metadata))
+            code = "OK"
             try:
                 return await inner(request, context)
             except IntegrityError:
+                code = grpc.StatusCode.ABORTED.name
                 await context.abort(grpc.StatusCode.ABORTED, "конфликт при записи в базу")
             except tuple(self._CODES) as exc:
+                code = self._CODES[type(exc)].name
                 await context.abort(self._CODES[type(exc)], str(exc))
+            finally:
+                # finally, а не хвост try: context.abort бросает исключение,
+                # и до строки после него управление не дойдёт.
+                observability.RPC_CALLS.labels(self._service, method, code).inc()
 
         return grpc.unary_unary_rpc_method_handler(
             wrapper,
@@ -76,8 +88,10 @@ def to_timestamp(value: datetime) -> Timestamp:
     return out
 
 
-async def build_server(port: int, registrations: Sequence[Registration]) -> grpc.aio.Server:
-    server = grpc.aio.server(interceptors=[ServerInterceptor()])
+async def build_server(
+    port: int, registrations: Sequence[Registration], service: str = ""
+) -> grpc.aio.Server:
+    server = grpc.aio.server(interceptors=[ServerInterceptor(service)])
     for item in registrations:
         item.register(server)
 

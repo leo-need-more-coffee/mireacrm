@@ -9,6 +9,9 @@ class Settings(BaseSettings):
     service_name: str = "gateway"
     http_port: int = 8000
     debug: bool = False
+    # Пустой адрес выключает экспорт трасс: нужен для тестов
+    # и запуска без инфраструктуры.
+    otlp_endpoint: str = ""
 
     # Keycloak подставляет в iss тот адрес, по которому к нему пришёл браузер,
     # а ключи шлюз забирает изнутри сети. Адреса разные, и оба нужны.

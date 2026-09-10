@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     amqp_url: str = "amqp://guest:guest@localhost:5672/"
     core_addr: str = "localhost:9001"
     debug: bool = False
+    # Пустой адрес выключает экспорт трасс: нужен для тестов
+    # и запуска без инфраструктуры.
+    otlp_endpoint: str = ""
 
 
 @lru_cache

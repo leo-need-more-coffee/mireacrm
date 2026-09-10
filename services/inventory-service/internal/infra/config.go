@@ -8,14 +8,15 @@ import (
 )
 
 type Config struct {
-	ServiceName string
-	PostgresDSN string
-	HTTPPort    int
-	GRPCPort    int
-	AMQPURL     string
-	NATSURL     string
-	CatalogAddr string
-	Debug       bool
+	ServiceName  string
+	PostgresDSN  string
+	HTTPPort     int
+	GRPCPort     int
+	AMQPURL      string
+	NATSURL      string
+	CatalogAddr  string
+	OTLPEndpoint string
+	Debug        bool
 }
 
 func LoadConfig() (Config, error) {
@@ -25,7 +26,9 @@ func LoadConfig() (Config, error) {
 		AMQPURL:     env("INVENTORY_AMQP_URL", "amqp://guest:guest@localhost:5672/"),
 		NATSURL:     env("INVENTORY_NATS_URL", "nats://localhost:4222"),
 		CatalogAddr: env("INVENTORY_CATALOG_ADDR", "localhost:9002"),
-		Debug:       env("INVENTORY_DEBUG", "false") == "true",
+		// Пустой адрес выключает экспорт трасс.
+		OTLPEndpoint: env("INVENTORY_OTLP_ENDPOINT", ""),
+		Debug:        env("INVENTORY_DEBUG", "false") == "true",
 	}
 
 	var err error

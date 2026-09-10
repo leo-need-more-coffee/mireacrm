@@ -8,7 +8,7 @@ from google.protobuf.json_format import MessageToJson
 from google.protobuf.message import Message
 from mirea.events.v1 import events_pb2
 
-from app.infra import identity, tracing
+from app.infra import identity, observability, tracing
 
 log = logging.getLogger(__name__)
 
@@ -55,25 +55,27 @@ class EventPublisher:
         if self._exchange is None:
             raise RuntimeError("publisher не подключён")
 
-        envelope = events_pb2.EventEnvelope(
-            event_id=str(uuid.uuid4()),
-            routing_key=routing_key,
-            producer=self._producer,
-            traceparent=tracing.current(),
-            actor=identity.current().subject,
-            **payload,
-        )
-        envelope.occurred_at.FromDatetime(datetime.now(UTC))
+        with observability.publish_span(routing_key):
+            envelope = events_pb2.EventEnvelope(
+                event_id=str(uuid.uuid4()),
+                routing_key=routing_key,
+                producer=self._producer,
+                traceparent=tracing.current(),
+                actor=identity.current().subject,
+                **payload,
+            )
+            envelope.occurred_at.FromDatetime(datetime.now(UTC))
 
-        await self._exchange.publish(
-            aio_pika.Message(
-                body=MessageToJson(envelope, indent=0).encode(),
-                content_type="application/json",
-                message_id=envelope.event_id,
-                type=routing_key,
-                delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
-            ),
-            routing_key=routing_key,
-        )
+            await self._exchange.publish(
+                aio_pika.Message(
+                    body=MessageToJson(envelope, indent=0).encode(),
+                    content_type="application/json",
+                    message_id=envelope.event_id,
+                    type=routing_key,
+                    delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
+                ),
+                routing_key=routing_key,
+            )
+        observability.EVENTS_PUBLISHED.labels(self._producer, routing_key).inc()
         log.info("опубликовано %s (%s)", routing_key, envelope.event_id)
 

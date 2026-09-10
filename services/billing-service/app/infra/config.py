@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     booking_addr: str = "localhost:9003"
     client_addr: str = "localhost:9005"
     debug: bool = False
+    # Пустой адрес выключает экспорт трасс: нужен для тестов
+    # и запуска без инфраструктуры.
+    otlp_endpoint: str = ""
 
 
 @lru_cache

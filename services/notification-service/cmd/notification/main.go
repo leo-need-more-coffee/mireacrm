@@ -53,6 +53,17 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	shutdownTracing, err := infra.SetupTracing(ctx, cfg.ServiceName, cfg.OTLPEndpoint)
+	if err != nil {
+		return err
+	}
+	// Экспортёр копит спаны пачками: без остановки последняя пачка теряется.
+	defer func() {
+		flush, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = shutdownTracing(flush)
+	}()
+
 	contacts, err := clients.DialClients(cfg.ClientAddr)
 	if err != nil {
 		return err
@@ -61,7 +72,7 @@ func run() error {
 
 	service := notify.New(contacts, notify.LogSender{}, notify.NewHistory(historySize))
 
-	consumer, err := infra.NewConsumer(cfg.AMQPURL, queueName)
+	consumer, err := infra.NewConsumer(cfg.AMQPURL, queueName, cfg.ServiceName)
 	if err != nil {
 		return err
 	}
@@ -87,11 +98,14 @@ func run() error {
 		return err
 	}
 
-	router := api.NewRouter(service,
+	router := api.NewRouter(service, cfg.ServiceName,
 		infra.Probe{Name: "broker", Check: consumer.Ping},
 		infra.Probe{Name: "realtime", Check: subscriber.Ping},
 	)
-	server := &http.Server{Addr: ":" + strconv.Itoa(cfg.HTTPPort), Handler: router}
+	server := &http.Server{
+		Addr:    ":" + strconv.Itoa(cfg.HTTPPort),
+		Handler: infra.HTTPHandler(router, cfg.ServiceName),
+	}
 
 	errc := make(chan error, 2)
 	go func() {

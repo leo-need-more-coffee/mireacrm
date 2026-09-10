@@ -8,15 +8,16 @@ import (
 )
 
 type Config struct {
-	ServiceName string
-	PostgresDSN string
-	HTTPPort    int
-	GRPCPort    int
-	AMQPURL     string
-	NATSURL     string
-	CoreAddr    string
-	CatalogAddr string
-	Debug       bool
+	ServiceName  string
+	PostgresDSN  string
+	HTTPPort     int
+	GRPCPort     int
+	AMQPURL      string
+	NATSURL      string
+	CoreAddr     string
+	CatalogAddr  string
+	OTLPEndpoint string
+	Debug        bool
 }
 
 func LoadConfig() (Config, error) {
@@ -27,7 +28,9 @@ func LoadConfig() (Config, error) {
 		NATSURL:     env("BOOKING_NATS_URL", "nats://localhost:4222"),
 		CoreAddr:    env("BOOKING_CORE_ADDR", "localhost:9001"),
 		CatalogAddr: env("BOOKING_CATALOG_ADDR", "localhost:9002"),
-		Debug:       env("BOOKING_DEBUG", "false") == "true",
+		// Пустой адрес выключает экспорт трасс.
+		OTLPEndpoint: env("BOOKING_OTLP_ENDPOINT", ""),
+		Debug:        env("BOOKING_DEBUG", "false") == "true",
 	}
 
 	var err error
