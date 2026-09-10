@@ -40,3 +40,21 @@ scrape_configs:
     static_configs:
       - targets: ["postgres-exporter:9187"]
         labels: { component: database }
+
+  # Брокер отдаёт метрики сам: плагин rabbitmq_prometheus включён в образе,
+  # отдельный экспортёр не нужен.
+  - job_name: rabbitmq
+    static_configs:
+      - targets: ["rabbitmq:15692"]
+        labels: { component: broker }
+
+  # Глубина очередей — отдельной работой. На /metrics её нет намеренно:
+  # там только агрегаты, чтобы сбор не дорожал с числом очередей. Разбивка
+  # по очередям живёт на /metrics/detailed и запрашивается семейством.
+  - job_name: rabbitmq-queues
+    metrics_path: /metrics/detailed
+    params:
+      family: [queue_coarse_metrics]
+    static_configs:
+      - targets: ["rabbitmq:15692"]
+        labels: { component: broker }

@@ -1,6 +1,6 @@
 {
   "uid": "mirea-crm",
-  "title": "Mirea CRM — сервисы и база",
+  "title": "Mirea CRM — сервисы, шина и база",
   "tags": [
     "mirea"
   ],
@@ -22,7 +22,7 @@
       "gridPos": {
         "x": 0,
         "y": 0,
-        "w": 8,
+        "w": 6,
         "h": 6
       },
       "datasource": {
@@ -63,9 +63,9 @@
       "type": "stat",
       "description": "Пятисотки ко всем ответам",
       "gridPos": {
-        "x": 8,
+        "x": 6,
         "y": 0,
-        "w": 8,
+        "w": 6,
         "h": 6
       },
       "datasource": {
@@ -106,9 +106,9 @@
       "type": "stat",
       "description": "Публикация и обработка доменных событий",
       "gridPos": {
-        "x": 16,
+        "x": 12,
         "y": 0,
-        "w": 8,
+        "w": 6,
         "h": 6
       },
       "datasource": {
@@ -148,6 +148,61 @@
           ]
         },
         "colorMode": "value",
+        "graphMode": "area"
+      }
+    },
+    {
+      "id": 14,
+      "title": "В dead-letter",
+      "type": "stat",
+      "description": "Сколько событий лежит непохороненными в mirea.events.dead. В здоровой системе ноль: туда попадает только то, что не починилось за пять попыток.",
+      "gridPos": {
+        "x": 18,
+        "y": 0,
+        "w": 6,
+        "h": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(rabbitmq_detailed_queue_messages{queue=\"mirea.events.dead\"})",
+          "legendFormat": "сообщений",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "background",
         "graphMode": "area"
       }
     },
@@ -334,7 +389,7 @@
       "id": 9,
       "title": "События в dead-letter",
       "type": "timeseries",
-      "description": "Ненулевое значение означает необработанные события: failed — обработчик вернул ошибку, unparsable — конверт не разобран",
+      "description": "Событие ушло в dead-letter: failed — попытки исчерпаны или повторять нечего, unparsable — конверт не разобран. Повторы сюда не попадают, они на соседней панели.",
       "gridPos": {
         "x": 12,
         "y": 22,
@@ -364,13 +419,99 @@
       }
     },
     {
+      "id": 15,
+      "title": "Глубина очередей",
+      "type": "timeseries",
+      "description": "Сколько сообщений ждёт обработки. Ровный ноль — потребители успевают. Растущая очередь означает, что потребитель отстаёт или лежит; растущий dead-letter — что события не чинятся сами.",
+      "gridPos": {
+        "x": 0,
+        "y": 30,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (queue) (rabbitmq_detailed_queue_messages{queue!=\"mirea.events.dead\"})",
+          "legendFormat": "{{queue}}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "sum(rabbitmq_detailed_queue_messages{queue=\"mirea.events.dead\"})",
+          "legendFormat": "dead-letter",
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "unit": "short"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 16,
+      "title": "Повторы обработки",
+      "type": "timeseries",
+      "description": "Обработчик оступился, событие вернулось в очередь. Ненулевые повторы при нулевых отказах — нормальная жизнь: соседа перезапустили, события подождали и прошли. Повторы, переходящие в отказы, означают, что само не починится.",
+      "gridPos": {
+        "x": 12,
+        "y": 30,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (service) (rate(domain_events_consumed_total{outcome=\"retried\"}[5m]))",
+          "legendFormat": "повтор {{service}}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "sum by (service) (rate(domain_events_consumed_total{outcome=\"failed\"}[5m]))",
+          "legendFormat": "отказ {{service}}",
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "unit": "reqps"
+        },
+        "overrides": []
+      }
+    },
+    {
       "id": 10,
       "title": "Вызовы gRPC",
       "type": "timeseries",
       "description": "",
       "gridPos": {
         "x": 0,
-        "y": 30,
+        "y": 38,
         "w": 12,
         "h": 8
       },
@@ -404,7 +545,7 @@
       "description": "По базе на сервис: видно, кто держит соединения",
       "gridPos": {
         "x": 12,
-        "y": 30,
+        "y": 38,
         "w": 12,
         "h": 8
       },
@@ -437,7 +578,7 @@
       "description": "",
       "gridPos": {
         "x": 0,
-        "y": 38,
+        "y": 46,
         "w": 12,
         "h": 8
       },
@@ -480,7 +621,7 @@
       "description": "",
       "gridPos": {
         "x": 12,
-        "y": 38,
+        "y": 46,
         "w": 12,
         "h": 8
       },

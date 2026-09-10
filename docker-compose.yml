@@ -50,6 +50,7 @@ services:
     ports:
       - "${RABBITMQ_PORT:-5672}:5672"
       - "${RABBITMQ_UI_PORT:-15672}:15672"
+      - "127.0.0.1:15692:15692"   # метрики для Prometheus
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
       - ./deploy/rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
