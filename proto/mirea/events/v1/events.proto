@@ -1,0 +1,135 @@
+syntax = "proto3";
+
+package mirea.events.v1;
+
+import "google/protobuf/timestamp.proto";
+import "mirea/common/v1/common.proto";
+
+// Доменные события, публикуемые в RabbitMQ (обменник mirea.events).
+//
+// В очередь кладутся в protobuf-JSON, а не в бинарном виде: типы остаются
+// общими для Python и Go, но сообщения читаются глазами в management-панели.
+// На отладке распределённой системы это окупается многократно.
+//
+// События намеренно тонкие: несут идентификаторы, а не полные снимки.
+// Потребитель запрашивает детали по gRPC (так billing тянет визит из booking).
+// Payload не разрастается, и его не приходится версионировать при каждом
+// изменении карточки.
+
+// --- Конверт ---
+
+message EventEnvelope {
+  string                    event_id    = 1;  // UUID, для дедупликации
+  string                    routing_key = 2;  // "appointment.completed"
+  google.protobuf.Timestamp occurred_at = 3;
+  string                    producer    = 4;  // "booking-service"
+  // W3C traceparent. Прокидывается вручную, иначе трасса рвётся на брокере
+  // и в Jaeger события выглядят как отдельные несвязанные корни.
+  string                    traceparent = 5;
+  // Идентификатор пользователя Keycloak, чьё действие привело к событию.
+  // Пусто у событий, порождённых обработкой другого события, а не человеком.
+  string                    actor       = 6;
+
+  oneof payload {
+    BranchOpened         branch_opened         = 10;
+    EmployeeHired        employee_hired        = 11;
+    ClientRegistered     client_registered     = 12;
+    AppointmentCreated   appointment_created   = 13;
+    AppointmentCancelled appointment_cancelled = 14;
+    AppointmentCompleted appointment_completed = 15;
+    ConsumablesWrittenOff consumables_written_off = 16;
+    StockLow             stock_low             = 17;
+    InvoiceIssued        invoice_issued        = 18;
+    InvoicePaid          invoice_paid          = 19;
+  }
+}
+
+// --- core-service ---
+
+message BranchOpened {
+  string branch_id  = 1;
+  string company_id = 2;
+  string name       = 3;
+}
+
+message EmployeeHired {
+  string employee_id = 1;
+  string branch_id   = 2;
+  string role        = 3;
+}
+
+// --- client-service ---
+
+message ClientRegistered {
+  string client_id = 1;
+  string branch_id = 2;  // филиал первичного обращения
+}
+
+// --- booking-service ---
+
+message AppointmentCreated {
+  string                    appointment_id = 1;
+  string                    branch_id      = 2;
+  string                    client_id      = 3;
+  string                    employee_id    = 4;
+  string                    service_id     = 5;
+  mirea.common.v1.TimeRange period         = 6;
+}
+
+message AppointmentCancelled {
+  string appointment_id = 1;
+  string branch_id      = 2;
+  string client_id      = 3;
+  string reason         = 4;
+}
+
+// Ключевое событие системы: его слушают трое — inventory списывает
+// расходники, billing выставляет счёт, analytics считает выручку.
+message AppointmentCompleted {
+  string appointment_id = 1;
+  string branch_id      = 2;
+  string client_id      = 3;
+  string employee_id    = 4;
+  string service_id     = 5;
+}
+
+// --- inventory-service ---
+
+message ConsumablesWrittenOff {
+  message Item {
+    string consumable_id = 1;
+    string unit          = 2;
+    double amount        = 3;
+  }
+  string         appointment_id = 1;
+  string         branch_id      = 2;
+  repeated Item  items          = 3;
+}
+
+message StockLow {
+  string consumable_id = 1;
+  string branch_id     = 2;
+  string name          = 3;
+  string unit          = 4;
+  double remaining     = 5;
+  double threshold     = 6;
+}
+
+// --- billing-service ---
+
+message InvoiceIssued {
+  string                invoice_id     = 1;
+  string                appointment_id = 2;
+  string                branch_id      = 3;
+  string                client_id      = 4;
+  mirea.common.v1.Money total          = 5;
+}
+
+message InvoicePaid {
+  string                invoice_id        = 1;
+  string                branch_id         = 2;
+  string                client_id         = 3;
+  string                employee_id       = 4;
+  mirea.common.v1.Money total             = 5;
+  mirea.common.v1.Money employee_commission = 6;
+}

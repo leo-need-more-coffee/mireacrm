@@ -1,0 +1,80 @@
+syntax = "proto3";
+
+package mirea.core.v1;
+
+import "mirea/common/v1/common.proto";
+
+// Роль сотрудника. Синхронизируется с ролями Keycloak, которые шлюз
+// проверяет в токене (см. services/gateway/README.md).
+enum EmployeeRole {
+  EMPLOYEE_ROLE_UNSPECIFIED = 0;
+  EMPLOYEE_ROLE_ADMIN       = 1;  // владелец сети, полный доступ
+  EMPLOYEE_ROLE_MANAGER     = 2;  // администратор филиала
+  EMPLOYEE_ROLE_SPECIALIST      = 3;  // специалист, оказывает услуги
+}
+
+message Company {
+  string id    = 1;
+  string name  = 2;
+  string inn   = 3;
+}
+
+message Branch {
+  string id         = 1;
+  string company_id = 2;
+  string name       = 3;  // "Салон на Тверской"
+  string address    = 4;
+  string timezone   = 5;  // IANA, например "Europe/Moscow"
+}
+
+message Employee {
+  string       id         = 1;
+  string       branch_id  = 2;
+  string       full_name  = 3;
+  EmployeeRole role       = 4;
+  bool         is_active  = 5;
+}
+
+// Одна рабочая смена специалиста.
+message WorkShift {
+  mirea.common.v1.TimeRange period = 1;
+}
+
+// --- RPC ---
+
+message GetBranchRequest {
+  string branch_id = 1;
+}
+
+message GetBranchResponse {
+  Branch branch = 1;
+}
+
+message GetEmployeeScheduleRequest {
+  string                    employee_id = 1;
+  mirea.common.v1.TimeRange period      = 2;
+}
+
+message GetEmployeeScheduleResponse {
+  Employee           employee = 1;
+  repeated WorkShift shifts   = 2;
+}
+
+message ListEmployeesRequest {
+  string                       branch_id = 1;
+  EmployeeRole                 role      = 2;  // UNSPECIFIED — все роли
+  mirea.common.v1.PageRequest  page      = 3;
+}
+
+message ListEmployeesResponse {
+  repeated Employee            employees = 1;
+  mirea.common.v1.PageResponse page      = 2;
+}
+
+// Ядро системы: единственный источник правды об организации.
+// Вызывается booking (график специалиста) и analytics (справочник для отчётов).
+service CoreService {
+  rpc GetBranch(GetBranchRequest) returns (GetBranchResponse);
+  rpc GetEmployeeSchedule(GetEmployeeScheduleRequest) returns (GetEmployeeScheduleResponse);
+  rpc ListEmployees(ListEmployeesRequest) returns (ListEmployeesResponse);
+}

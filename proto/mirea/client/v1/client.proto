@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package mirea.client.v1;
+
+import "mirea/common/v1/common.proto";
+
+enum PreferredChannel {
+  PREFERRED_CHANNEL_UNSPECIFIED = 0;
+  PREFERRED_CHANNEL_SMS         = 1;
+  PREFERRED_CHANNEL_EMAIL       = 2;
+  PREFERRED_CHANNEL_TELEGRAM    = 3;
+}
+
+message ClientContacts {
+  string           client_id = 1;
+  string           full_name = 2;
+  string           phone     = 3;
+  string           email     = 4;
+  string           telegram  = 5;
+  PreferredChannel preferred = 6;
+}
+
+// --- RPC ---
+
+message GetClientContactsRequest {
+  string client_id = 1;
+}
+
+message GetClientContactsResponse {
+  ClientContacts contacts = 1;
+}
+
+message AddLoyaltyPointsRequest {
+  string                client_id  = 1;
+  mirea.common.v1.Money paid       = 2;  // сумму знает billing, баллы считаются от неё
+  // Ключ идемпотентности: повторная доставка события не должна начислить
+  // баллы дважды. Используется invoice_id.
+  string                invoice_id = 3;
+}
+
+message AddLoyaltyPointsResponse {
+  int64 points_added   = 1;
+  int64 points_balance = 2;
+}
+
+// Клиентская база. Вызывается notification (контакты для отправки)
+// и billing (начисление баллов после оплаты).
+service ClientService {
+  rpc GetClientContacts(GetClientContactsRequest) returns (GetClientContactsResponse);
+  rpc AddLoyaltyPoints(AddLoyaltyPointsRequest) returns (AddLoyaltyPointsResponse);
+}

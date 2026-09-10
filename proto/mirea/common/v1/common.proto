@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package mirea.common.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// Денежная сумма. Хранится в копейках целым числом: float для денег
+// использовать нельзя из-за ошибок округления.
+message Money {
+  int64  amount_kopecks = 1;
+  string currency_code  = 2;  // ISO 4217, здесь всегда "RUB"
+}
+
+// Полуинтервал [start_at, end_at). Используется для смен, слотов и
+// периодов в отчётах.
+message TimeRange {
+  google.protobuf.Timestamp start_at = 1;
+  google.protobuf.Timestamp end_at   = 2;
+}
+
+// Постраничная навигация по курсору. Смещения не используем: в списках,
+// которые пополняются во время листания, они пропускают записи.
+message PageRequest {
+  int32  limit  = 1;
+  string cursor = 2;
+}
+
+message PageResponse {
+  string next_cursor = 1;
+}

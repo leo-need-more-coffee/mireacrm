@@ -1,0 +1,26 @@
+version: v2
+
+managed:
+  enabled: true
+  override:
+    # Go-пакеты собираются из пути файла; менять на свой репозиторий.
+    - file_option: go_package_prefix
+      value: mirea-crm/gen/go
+
+plugins:
+  # --- Go: booking, inventory, notification ---
+  - remote: buf.build/protocolbuffers/go
+    out: gen/go
+    opt: paths=source_relative
+  - remote: buf.build/grpc/go
+    out: gen/go
+    opt: paths=source_relative
+
+  # --- Python: core, client, catalog, billing, analytics, gateway ---
+  - remote: buf.build/protocolbuffers/python
+    out: gen/python
+  - remote: buf.build/grpc/python
+    out: gen/python
+  # Заглушки типов, без них IDE не видит сгенерированные классы.
+  - remote: buf.build/protocolbuffers/pyi
+    out: gen/python

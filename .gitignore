@@ -1,0 +1,22 @@
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# Go
+/bin/
+*.test
+
+.idea/
+.vscode/
+
+# Методички — чужой материал, в репозитории им не место
+manuals/
+
+# Артефакты установки
+*.egg-info/

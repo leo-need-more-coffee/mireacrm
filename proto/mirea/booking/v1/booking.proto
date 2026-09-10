@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package mirea.booking.v1;
+
+import "mirea/common/v1/common.proto";
+
+enum AppointmentStatus {
+  APPOINTMENT_STATUS_UNSPECIFIED = 0;
+  APPOINTMENT_STATUS_SCHEDULED   = 1;  // записан, визит впереди
+  APPOINTMENT_STATUS_COMPLETED   = 2;  // специалист закрыл визит
+  APPOINTMENT_STATUS_CANCELLED   = 3;
+  APPOINTMENT_STATUS_NO_SHOW     = 4;  // не пришёл
+}
+
+message Appointment {
+  string                    id          = 1;
+  string                    branch_id   = 2;
+  string                    client_id   = 3;
+  string                    employee_id = 4;  // специалист
+  string                    service_id  = 5;
+  mirea.common.v1.TimeRange period      = 6;
+  AppointmentStatus         status      = 7;
+  // Цена зафиксирована на момент записи: прайс мог измениться после.
+  mirea.common.v1.Money     price       = 8;
+}
+
+// --- RPC ---
+
+message GetAppointmentRequest {
+  string appointment_id = 1;
+}
+
+message GetAppointmentResponse {
+  Appointment appointment = 1;
+}
+
+message ListClientAppointmentsRequest {
+  string                      client_id = 1;
+  mirea.common.v1.PageRequest page      = 2;
+}
+
+message ListClientAppointmentsResponse {
+  repeated Appointment         appointments = 1;
+  mirea.common.v1.PageResponse page         = 2;
+}
+
+// Записи и расписание. Вызывается billing (детали записи по событию)
+// и client (история записей для карточки клиента).
+service BookingService {
+  rpc GetAppointment(GetAppointmentRequest) returns (GetAppointmentResponse);
+  rpc ListClientAppointments(ListClientAppointmentsRequest) returns (ListClientAppointmentsResponse);
+}

@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package mirea.catalog.v1;
+
+import "mirea/common/v1/common.proto";
+
+// Услуга салона: что оказываем, сколько длится, сколько стоит.
+message Service {
+  string                 id               = 1;
+  string                 branch_id        = 2;
+  string                 name             = 3;  // "Окрашивание в один тон"
+  int32                  duration_minutes = 4;
+  mirea.common.v1.Money  price            = 5;
+  bool                   is_active        = 6;
+}
+
+// Норматив расхода: сколько материала уходит на одну процедуру.
+// Связывает услугу со складом и делает списание автоматическим.
+message ConsumptionNorm {
+  string consumable_id = 1;
+  string name          = 2;  // "Краска 6.0 натуральный тёмно-русый"
+  string unit          = 3;  // "г", "мл", "шт"
+  double amount        = 4;
+}
+
+// --- RPC ---
+
+message GetServiceRequest {
+  string service_id = 1;
+  string branch_id  = 2;  // цена различается по филиалам
+}
+
+message GetServiceResponse {
+  Service service = 1;
+}
+
+message GetConsumptionNormsRequest {
+  string service_id = 1;
+}
+
+message GetConsumptionNormsResponse {
+  repeated ConsumptionNorm norms = 1;
+}
+
+// Справочник услуг. Вызывается booking (длительность и цена при записи)
+// и inventory (что списать после визита).
+service CatalogService {
+  rpc GetService(GetServiceRequest) returns (GetServiceResponse);
+  rpc GetConsumptionNorms(GetConsumptionNormsRequest) returns (GetConsumptionNormsResponse);
+}

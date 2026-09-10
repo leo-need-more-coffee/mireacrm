@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package mirea.realtime.v1;
+
+import "google/protobuf/timestamp.proto";
+import "mirea/common/v1/common.proto";
+
+// Эфемерные сообщения NATS (core pub/sub, без JetStream).
+//
+// Отличие от mirea.events.v1: здесь нет гарантий доставки и это осознанно.
+// Сообщение устаревает за секунды, а подписчик ресинкнется при
+// переподключении. Всё, что нельзя терять, идёт через RabbitMQ.
+
+// Subject: mirea.branch.{branch_id}.schedule
+// Живое табло на ресепшене: слот гаснет у всех открытых интерфейсов
+// мгновенно, без опроса сервера.
+message SlotChanged {
+  string                    branch_id      = 1;
+  string                    employee_id    = 2;
+  mirea.common.v1.TimeRange period         = 3;
+  bool                      is_taken       = 4;
+  string                    appointment_id = 5;  // пусто при освобождении
+}
+
+// Subject: mirea.branch.{branch_id}.alerts
+// Всплывающий алерт администратору филиала. Дублируется письмом через
+// RabbitMQ — NATS нужен только для скорости.
+message BranchAlert {
+  enum Severity {
+    SEVERITY_UNSPECIFIED = 0;
+    SEVERITY_INFO        = 1;
+    SEVERITY_WARNING     = 2;
+    SEVERITY_CRITICAL    = 3;
+  }
+  string                    branch_id = 1;
+  Severity                  severity  = 2;
+  string                    title     = 3;
+  string                    body      = 4;
+  google.protobuf.Timestamp raised_at = 5;
+}
+
+// Subject: mirea.heartbeat
+message Heartbeat {
+  string                    service   = 1;  // "booking-service"
+  string                    version   = 2;
+  google.protobuf.Timestamp sent_at   = 3;
+}
