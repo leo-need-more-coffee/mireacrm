@@ -20,3 +20,5 @@ manuals/
 
 # Артефакты установки
 *.egg-info/
+/gen/python/build/
+/gen/python/dist/

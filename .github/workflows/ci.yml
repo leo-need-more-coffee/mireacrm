@@ -1,0 +1,269 @@
+# Конвейер непрерывной интеграции и доставки.
+#
+# Тесты вынесены в отдельные работы и выполняются раньше остальных: публикация
+# образа возможна только после того, как весь набор прошёл. Публикация и
+# развёртывание включаются сами, как только в репозитории появляются секреты, —
+# до этого конвейер зелёный и делает всё, что может делать без доступов.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  contracts:
+    name: Контракты
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: bufbuild/buf-setup-action@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Линтер контрактов
+        run: buf lint
+
+      - name: Сгенерированный код соответствует контрактам
+        # Правка .proto без перегенерации ломает сборку только у того, кто
+        # соберёт следующим. Здесь это видно сразу.
+        run: |
+          buf generate
+          git diff --exit-code gen/ \
+            || { echo "::error::gen/ не соответствует proto/ — выполните buf generate"; exit 1; }
+
+  python-tests:
+    name: Тесты Python (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [core, catalog, client, billing, analytics, gateway]
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Базы данных сервисов
+        # Скрипт выполняется тем же образом Postgres, что и служебный
+        # контейнер: psql гарантированно есть, а набор утилит раннера
+        # значения не имеет.
+        run: |
+          docker run --rm --network host \
+            -e POSTGRES_USER=postgres -e PGPASSWORD=postgres -e PGHOST=localhost \
+            -v "$PWD/deploy/postgres:/scripts:ro" \
+            postgres:16-alpine bash /scripts/init-databases.sh
+
+      - name: Установка
+        run: |
+          directory="services/${{ matrix.service }}"
+          [ -d "$directory" ] || directory="services/${{ matrix.service }}-service"
+          echo "SERVICE_DIR=$directory" >> "$GITHUB_ENV"
+          python -m pip install --upgrade pip
+          # Контракты ставятся первыми: сервисы зависят от них по имени,
+          # а на PyPI такого пакета нет.
+          pip install ./gen/python
+          pip install -e "$directory[dev]"
+
+      - name: Линтер
+        working-directory: ${{ env.SERVICE_DIR }}
+        run: |
+          pip install ruff
+          ruff check .
+
+      - name: Модульные тесты
+        working-directory: ${{ env.SERVICE_DIR }}
+        run: python -m pytest tests/unit -q
+
+      - name: Интеграционные тесты
+        working-directory: ${{ env.SERVICE_DIR }}
+        # Шлюзу нужен Keycloak, которого в конвейере нет: его интеграционные
+        # тесты пропускают себя сами, и это видно в отчёте.
+        run: python -m pytest tests/integration -q
+
+  go-tests:
+    name: Тесты Go (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [booking, inventory, notification]
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/${{ matrix.service }}-service/go.mod
+          cache-dependency-path: services/${{ matrix.service }}-service/go.sum
+
+      - name: Базы данных сервисов
+        # Скрипт выполняется тем же образом Postgres, что и служебный
+        # контейнер: psql гарантированно есть, а набор утилит раннера
+        # значения не имеет.
+        run: |
+          docker run --rm --network host \
+            -e POSTGRES_USER=postgres -e PGPASSWORD=postgres -e PGHOST=localhost \
+            -v "$PWD/deploy/postgres:/scripts:ro" \
+            postgres:16-alpine bash /scripts/init-databases.sh
+
+      - name: Форматирование
+        working-directory: services/${{ matrix.service }}-service
+        run: |
+          unformatted=$(gofmt -l .)
+          [ -z "$unformatted" ] || { echo "::error::не отформатировано: $unformatted"; exit 1; }
+
+      - name: Статический анализ
+        working-directory: services/${{ matrix.service }}-service
+        run: go vet ./...
+
+      - name: Модульные тесты
+        working-directory: services/${{ matrix.service }}-service
+        run: go test ./...
+
+      - name: Интеграционные тесты
+        working-directory: services/${{ matrix.service }}-service
+        # Отдельный признак сборки: без него go test ./... требовал бы базу
+        # у каждого, кто просто хочет прогнать модульные тесты.
+        run: go test -tags integration ./...
+
+  secrets-check:
+    name: Проверка доступов
+    runs-on: ubuntu-latest
+    outputs:
+      dockerhub: ${{ steps.check.outputs.dockerhub }}
+      yandex: ${{ steps.check.outputs.yandex }}
+    steps:
+      - id: check
+        # Контекст секретов недоступен в условии работы, поэтому наличие
+        # доступов вычисляется шагом и передаётся дальше как результат.
+        run: |
+          echo "dockerhub=${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}" >> "$GITHUB_OUTPUT"
+          echo "yandex=${{ secrets.YC_KEYS != '' && secrets.YC_REGISTRY_ID != '' }}" >> "$GITHUB_OUTPUT"
+
+  dockerhub:
+    name: Публикация в DockerHub
+    needs: [contracts, python-tests, go-tests, secrets-check]
+    if: github.ref == 'refs/heads/main' && needs.secrets-check.outputs.dockerhub == 'true'
+    runs-on: ubuntu-latest
+    # inventory-service держит постоянное соединение с брокером, поэтому
+    # бессерверное развёртывание ему не подходит — только обычный образ.
+    env:
+      SERVICE: inventory-service
+      IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/mirea-crm-inventory
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=raw,value=latest
+            type=sha,format=short
+
+      - name: Сборка и публикация
+        uses: docker/build-push-action@v6
+        with:
+          # Контекст — корень репозитория: образу нужен gen/ из него.
+          context: .
+          file: services/${{ env.SERVICE }}/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  yandex-cloud:
+    name: Развёртывание в Яндекс.Облаке
+    needs: [contracts, python-tests, go-tests, secrets-check]
+    if: github.ref == 'refs/heads/main' && needs.secrets-check.outputs.yandex == 'true'
+    runs-on: ubuntu-latest
+    # catalog-service — чистый справочник: отвечает на запросы, не держит
+    # соединений с брокером и переживает остановку между вызовами.
+    env:
+      SERVICE: catalog-service
+      IMAGE: cr.yandex/${{ secrets.YC_REGISTRY_ID }}/mirea-crm-catalog
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Вход в реестр
+        uses: docker/login-action@v3
+        with:
+          registry: cr.yandex
+          username: json_key
+          password: ${{ secrets.YC_KEYS }}
+
+      - name: Сборка и публикация
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: services/${{ env.SERVICE }}/Dockerfile
+          push: true
+          tags: ${{ env.IMAGE }}:latest,${{ env.IMAGE }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Развёртывание бессерверного контейнера
+        uses: yc-actions/yc-sls-container-deploy@v3
+        with:
+          yc-sa-json-credentials: ${{ secrets.YC_KEYS }}
+          folder-id: ${{ secrets.YC_FOLDER_ID }}
+          container-name: ${{ secrets.YC_CONTAINER_NAME }}
+          revision-image-url: ${{ env.IMAGE }}:${{ github.sha }}
+          revision-service-account-id: ${{ secrets.YC_SA_ID }}
+          # Бессерверный контейнер останавливается между вызовами и ничего не
+          # хранит: база должна быть внешней и доступной из сети.
+          revision-env: |
+            CATALOG_POSTGRES_DSN=${{ secrets.CATALOG_POSTGRES_DSN }}
+            CATALOG_AMQP_URL=${{ secrets.AMQP_URL }}
+            CATALOG_HTTP_PORT=8080
