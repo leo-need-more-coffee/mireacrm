@@ -5,10 +5,11 @@
 
 | | |
 |---|---|
-| **Язык** | Python 3.11 + FastAPI |
+| **Язык** | Python 3.12 + FastAPI |
 | **БД** | PostgreSQL, `catalog_db` |
 | **Транспорт** | REST наружу, gRPC-сервер внутрь |
-| **Деплой (ПР7)** | Serverless-контейнер в Яндекс.Облаке |
+| **Порты** | REST :8002, gRPC :9002 |
+| **Автотестов** | 13 |
 
 ## Ответственность
 
@@ -59,7 +60,7 @@
 Из восьми файлов `infra/` семь скопированы из `core-service` **байт в байт**.
 Отличается только `config.py` — префикс переменных окружения, порты и DSN.
 
-## Грабли SQLAlchemy, на которые тут наступили
+## Грабли SQLAlchemy
 
 `get_service` использует `populate_existing=True`. Без него после `commit` объект
 остаётся в identity map, `session.get` возвращает кэшированный экземпляр с
@@ -76,7 +77,7 @@ docker compose up -d catalog-service   # REST :8002, gRPC :9002
 
 ## Тесты
 
-По ПР8 — unit и интеграционные, 13 штук.
+Два вида: unit и интеграционные.
 
 ```bash
 .venv/bin/python -m pytest
