@@ -32,6 +32,20 @@ const (
 	alertSubj = "mirea.branch.*.alerts"
 )
 
+// В конвейере брокеры подняты заведомо, поэтому пропуск теста там означал бы
+// не «нечего проверять», а незамеченную поломку.
+func brokerRequired() bool {
+	return os.Getenv("NOTIFICATION_REQUIRE_BROKER") != ""
+}
+
+func unavailable(t *testing.T, what string, err error) {
+	t.Helper()
+	if brokerRequired() {
+		t.Fatalf("%s недоступен: %v", what, err)
+	}
+	t.Skipf("%s недоступен: %v", what, err)
+}
+
 func amqpURL() string {
 	if url := os.Getenv("NOTIFICATION_TEST_AMQP_URL"); url != "" {
 		return url
@@ -75,7 +89,7 @@ func ownQueue(t *testing.T, keys ...string) (*amqp.Connection, string) {
 
 	conn, err := amqp.Dial(amqpURL())
 	if err != nil {
-		t.Skipf("RabbitMQ недоступен: %v", err)
+		unavailable(t, "RabbitMQ", err)
 	}
 	channel, err := conn.Channel()
 	if err != nil {
@@ -227,7 +241,7 @@ func TestUnparsableEventDoesNotStopConsumer(t *testing.T) {
 func TestAlertFromRealtimeReachesHandler(t *testing.T) {
 	subscriber, err := infra.NewSubscriber(natsURL(), "notification-test")
 	if err != nil {
-		t.Skipf("NATS недоступен: %v", err)
+		unavailable(t, "NATS", err)
 	}
 	defer subscriber.Close()
 

@@ -30,6 +30,44 @@ jobs:
       - name: Линтер контрактов
         run: buf lint
 
+      - name: Спецификация покрывает все маршруты
+        # Полная сборка требует работающих сервисов, поэтому здесь проверяется
+        # только состав: маршрут, добавленный в шлюз без перегенерации, не
+        # проявится ни у кого до попытки им воспользоваться.
+        run: |
+          pip install --quiet pyyaml
+          python3 - <<'CHECK'
+          import importlib.util, sys, yaml
+
+          spec = importlib.util.spec_from_file_location(
+              "table", "services/gateway/app/routing/table.py")
+          table = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(table)
+
+          document = yaml.safe_load(open("docs/openapi.yaml"))
+          described = {
+              (method.upper(), path)
+              for path, methods in document["paths"].items()
+              for method in methods
+          }
+
+          def matches(pattern, path):
+              left = [p for p in pattern.split("/") if p]
+              right = [p for p in path.split("/") if p]
+              return len(left) == len(right) and all(
+                  a == "*" or a == b for a, b in zip(left, right))
+
+          missing = [
+              f"{route.method} {route.path}"
+              for route in table.ROUTES
+              if not any(m == route.method and matches(route.path, p) for m, p in described)
+          ]
+          if missing:
+              print("::error::в docs/openapi.yaml нет маршрутов: " + ", ".join(missing))
+              sys.exit(1)
+          print(f"описаны все {len(table.ROUTES)} маршрутов")
+          CHECK
+
       - name: Сгенерированный код соответствует контрактам
         # Правка .proto без перегенерации ломает сборку только у того, кто
         # соберёт следующим. Здесь это видно сразу.
@@ -78,6 +116,31 @@ jobs:
             -v "$PWD/deploy/postgres:/scripts:ro" \
             postgres:16-alpine bash /scripts/init-databases.sh
 
+      - name: Keycloak
+        # Служебным контейнером его не поднять: область импортируется из
+        # каталога репозитория, а тот появляется только после выгрузки.
+        # Без Keycloak интеграционные тесты шлюза пропускают себя сами —
+        # и вместе с ними пропадает проверка настройки области.
+        if: matrix.service == 'gateway'
+        run: |
+          docker run -d --name keycloak --network host \
+            -e KC_BOOTSTRAP_ADMIN_USERNAME=admin \
+            -e KC_BOOTSTRAP_ADMIN_PASSWORD=admin \
+            -e KC_HOSTNAME=http://localhost:8080 \
+            -v "$PWD/deploy/keycloak:/opt/keycloak/data/import:ro" \
+            quay.io/keycloak/keycloak:26.0 start-dev --import-realm
+
+          for _ in $(seq 1 60); do
+            if curl -sf http://localhost:8080/realms/mirea/.well-known/openid-configuration >/dev/null; then
+              echo "область mirea импортирована"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "::error::Keycloak не поднялся"
+          docker logs keycloak | tail -30
+          exit 1
+
       - name: Установка
         run: |
           directory="services/${{ matrix.service }}"
@@ -101,8 +164,6 @@ jobs:
 
       - name: Интеграционные тесты
         working-directory: ${{ env.SERVICE_DIR }}
-        # Шлюзу нужен Keycloak, которого в конвейере нет: его интеграционные
-        # тесты пропускают себя сами, и это видно в отчёте.
         run: python -m pytest tests/integration -q
 
   go-tests:
@@ -131,6 +192,11 @@ jobs:
       # Обменник и очередь тесты объявляют сами, топология здесь не нужна.
       rabbitmq:
         image: rabbitmq:3.13-alpine
+        env:
+          # Учётная запись своя, не guest: guest пускают только с петли,
+          # а подключение из работы приходит через мост docker.
+          RABBITMQ_DEFAULT_USER: mirea
+          RABBITMQ_DEFAULT_PASS: mirea
         ports: ["5672:5672"]
         options: >-
           --health-cmd "rabbitmq-diagnostics -q ping"
@@ -178,6 +244,14 @@ jobs:
         working-directory: services/${{ matrix.service }}-service
         # Отдельный признак сборки: без него go test ./... требовал бы базу
         # у каждого, кто просто хочет прогнать модульные тесты.
+        #
+        # NOTIFICATION_REQUIRE_BROKER запрещает пропускать тесты брокеров:
+        # здесь они подняты заведомо, и пропуск означал бы не «нечего
+        # проверять», а незамеченную поломку.
+        env:
+          NOTIFICATION_REQUIRE_BROKER: "1"
+          NOTIFICATION_TEST_AMQP_URL: amqp://mirea:mirea@localhost:5672/
+          NOTIFICATION_TEST_NATS_URL: nats://localhost:4222
         run: go test -tags integration ./...
 
   secrets-check:
