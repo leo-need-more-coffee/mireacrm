@@ -3,13 +3,13 @@
 import uuid
 
 from mirea.events.v1 import events_pb2
+from mireacrm_common.errors import ConflictError, NotFoundError
+from mireacrm_common.events import EventPublisher
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import commands, models
-from app.infra.errors import ConflictError, NotFoundError
-from app.infra.events import EventPublisher
 
 # Пять процентов от оплаченной суммы, округление вниз до целого балла.
 POINTS_RATE = 0.05

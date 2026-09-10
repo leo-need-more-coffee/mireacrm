@@ -1,9 +1,9 @@
 import grpc
 from mirea.catalog.v1 import catalog_pb2, catalog_pb2_grpc
+from mireacrm_common.lifespan import AppContext
+from mireacrm_common.rpc import Registration, parse_uuid
 
 from app import domain
-from app.infra.lifespan import AppContext
-from app.infra.rpc import Registration, parse_uuid
 from app.rpc import mapping
 
 

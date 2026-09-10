@@ -4,9 +4,9 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from mireacrm_common.errors import ConflictError, NotFoundError
 
 from app import commands, domain, models
-from app.infra.errors import ConflictError, NotFoundError
 
 BRANCH = uuid.uuid4()
 EMPLOYEE = uuid.uuid4()

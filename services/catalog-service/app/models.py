@@ -2,11 +2,10 @@ import uuid
 from datetime import datetime
 from typing import Annotated
 
+from mireacrm_common.errors import ConflictError
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-
-from app.infra.errors import ConflictError
 
 
 class Base(DeclarativeBase):

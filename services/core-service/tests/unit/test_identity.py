@@ -1,4 +1,4 @@
-from app.infra import identity
+from mireacrm_common import identity
 
 
 class TestParse:

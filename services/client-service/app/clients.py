@@ -6,8 +6,7 @@ from datetime import datetime
 
 from mirea.booking.v1 import booking_pb2, booking_pb2_grpc
 from mirea.common.v1 import common_pb2
-
-from app.infra import grpc_client
+from mireacrm_common import grpc_client
 
 
 @dataclass(frozen=True, slots=True)

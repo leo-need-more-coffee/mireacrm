@@ -13,10 +13,11 @@ import (
 	"syscall"
 	"time"
 
+	"mirea-crm/libs/go-common/infra"
 	"mirea-crm/services/booking-service/internal/api"
 	"mirea-crm/services/booking-service/internal/booking"
 	"mirea-crm/services/booking-service/internal/clients"
-	"mirea-crm/services/booking-service/internal/infra"
+	"mirea-crm/services/booking-service/internal/config"
 	"mirea-crm/services/booking-service/internal/rpc"
 	"mirea-crm/services/booking-service/migrations"
 )
@@ -37,7 +38,7 @@ func main() {
 }
 
 func run() error {
-	cfg, err := infra.LoadConfig()
+	cfg, err := config.Load()
 	if err != nil {
 		return err
 	}
@@ -134,7 +135,7 @@ func run() error {
 }
 
 func probe() int {
-	cfg, err := infra.LoadConfig()
+	cfg, err := config.Load()
 	if err != nil {
 		return 1
 	}

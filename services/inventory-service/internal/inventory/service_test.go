@@ -9,7 +9,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	eventsv1 "mirea-crm/gen/go/mirea/events/v1"
-	"mirea-crm/services/inventory-service/internal/infra"
+	"mirea-crm/libs/go-common/infra"
 )
 
 type fakeNorms struct {

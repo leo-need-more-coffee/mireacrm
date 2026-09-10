@@ -2,12 +2,12 @@
 
 import uuid
 
+from mireacrm_common.errors import NotFoundError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app import commands, models
-from app.infra.errors import NotFoundError
 
 
 async def _resolve_consumable(session: AsyncSession, norm: commands.NormIn) -> models.Consumable:

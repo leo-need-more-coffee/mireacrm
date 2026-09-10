@@ -15,7 +15,8 @@ import (
 	eventsv1 "mirea-crm/gen/go/mirea/events/v1"
 	realtimev1 "mirea-crm/gen/go/mirea/realtime/v1"
 
-	"mirea-crm/services/booking-service/internal/infra"
+	"mirea-crm/libs/go-common/infra"
+	"mirea-crm/services/booking-service/internal/access"
 )
 
 // Directory — то, что booking спрашивает у соседей. Реализуется gRPC-клиентами
@@ -182,7 +183,7 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID) (*Appointment, error) {
 // ensureOwn — специалист работает только со своими визитами. Роль проверил
 // шлюз, а кому принадлежит визит, знает только этот сервис.
 func (s *Service) ensureOwn(ctx context.Context, item *Appointment) error {
-	return infra.EnsureOwner(infra.CallerFrom(ctx), item.EmployeeID.String(), "визит")
+	return access.EnsureOwner(infra.CallerFrom(ctx), item.EmployeeID.String(), "визит")
 }
 
 func (s *Service) ListByClient(
@@ -199,7 +200,7 @@ func (s *Service) ListByClient(
 func (s *Service) Complete(ctx context.Context, id uuid.UUID) (*Appointment, error) {
 	// Проверка до смены состояния: закрыть чужой визит нельзя даже на миг.
 	// Лишнее чтение выполняется только для непривилегированного вызывающего.
-	if caller := infra.CallerFrom(ctx); caller.Known() && !caller.Privileged() {
+	if caller := infra.CallerFrom(ctx); caller.Known() && !access.Privileged(caller) {
 		existing, err := s.repo.Get(ctx, id)
 		if err != nil {
 			return nil, err

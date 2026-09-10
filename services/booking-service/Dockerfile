@@ -3,8 +3,9 @@ FROM golang:1.26-alpine AS builder
 WORKDIR /src
 
 # Контекст сборки — корень репозитория: модуль зависит от gen/go
-# через replace-директиву.
+# и от общего обвяза libs/go-common через replace-директивы.
 COPY gen/go ./gen/go
+COPY libs/go-common ./libs/go-common
 COPY services/booking-service/go.mod services/booking-service/go.sum ./services/booking-service/
 WORKDIR /src/services/booking-service
 RUN go mod download

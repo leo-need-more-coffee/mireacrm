@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"mirea-crm/services/inventory-service/internal/infra"
+	"mirea-crm/libs/go-common/infra"
 	"mirea-crm/services/inventory-service/migrations"
 )
 

@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"mirea-crm/services/booking-service/internal/infra"
+	"mirea-crm/libs/go-common/infra"
 )
 
 const overlapConstraint = "appointments_no_overlap"

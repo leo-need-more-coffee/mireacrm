@@ -12,7 +12,7 @@ import (
 	eventsv1 "mirea-crm/gen/go/mirea/events/v1"
 	realtimev1 "mirea-crm/gen/go/mirea/realtime/v1"
 
-	"mirea-crm/services/inventory-service/internal/infra"
+	"mirea-crm/libs/go-common/infra"
 )
 
 // Norms — нормативы расхода из catalog-service.

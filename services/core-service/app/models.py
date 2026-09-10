@@ -5,11 +5,10 @@ from datetime import datetime
 from itertools import pairwise
 from typing import Annotated
 
+from mireacrm_common.errors import ConflictError
 from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-
-from app.infra.errors import ConflictError
 
 
 class Base(DeclarativeBase):

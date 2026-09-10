@@ -1,13 +1,13 @@
 import uuid
 
 from fastapi import APIRouter, Depends, Query, status
+from mireacrm_common.deps import get_context, get_publisher, get_session
+from mireacrm_common.events import EventPublisher
+from mireacrm_common.lifespan import AppContext
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import commands, domain
 from app.api import schemas
-from app.api.deps import get_context, get_publisher, get_session
-from app.infra.events import EventPublisher
-from app.infra.lifespan import AppContext
 
 router = APIRouter(tags=["clients"])
 

@@ -3,9 +3,9 @@
 import uuid
 
 import pytest
+from mireacrm_common.errors import ConflictError, NotFoundError
 
 from app import commands, domain
-from app.infra.errors import ConflictError, NotFoundError
 from app.models import PreferredChannel
 
 BRANCH = uuid.uuid4()

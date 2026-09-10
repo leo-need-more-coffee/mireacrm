@@ -12,7 +12,7 @@ import (
 
 	catalogv1 "mirea-crm/gen/go/mirea/catalog/v1"
 
-	"mirea-crm/services/inventory-service/internal/infra"
+	"mirea-crm/libs/go-common/infra"
 	"mirea-crm/services/inventory-service/internal/inventory"
 )
 

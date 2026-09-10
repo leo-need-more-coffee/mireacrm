@@ -9,7 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"mirea-crm/services/inventory-service/internal/infra"
+	"mirea-crm/libs/go-common/infra"
 )
 
 func quantity(t *testing.T, repo *PostgresRepository, branch, consumable uuid.UUID) float64 {

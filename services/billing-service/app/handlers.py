@@ -7,10 +7,10 @@ import logging
 import uuid
 
 from mirea.events.v1 import events_pb2
+from mireacrm_common.lifespan import AppContext
 
 from app import commands, domain
 from app.clients import Neighbours
-from app.infra.lifespan import AppContext
 
 log = logging.getLogger(__name__)
 

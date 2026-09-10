@@ -7,8 +7,13 @@
 
 import uuid
 
-from app.infra.errors import ForbiddenError
-from app.infra.identity import Caller, current
+from mireacrm_common.errors import ForbiddenError
+from mireacrm_common.identity import Caller, current
+
+# Роли, которым видно чужое. Специалист работает только со своим.
+# Правило принадлежит сервису-владельцу, а не общей библиотеке: общей
+# библиотеке нечего знать о том, кто кому кем приходится.
+PRIVILEGED = frozenset({"admin", "manager"})
 
 
 def ensure_owner(owner_id: uuid.UUID | str | None, what: str, caller: Caller | None = None) -> None:
@@ -19,7 +24,7 @@ def ensure_owner(owner_id: uuid.UUID | str | None, what: str, caller: Caller | N
     снаружи такой вызов не сделать — заголовки личности шлюз затирает.
     """
     caller = current() if caller is None else caller
-    if not caller.known or caller.privileged:
+    if not caller.known or caller.has_any(*PRIVILEGED):
         return
 
     # Пустая привязка означает, что учётной записи не соответствует ни один

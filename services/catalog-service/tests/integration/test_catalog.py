@@ -3,9 +3,9 @@
 import uuid
 
 import pytest
+from mireacrm_common.errors import NotFoundError
 
 from app import commands, domain
-from app.infra.errors import NotFoundError
 
 BRANCH = uuid.uuid4()
 

@@ -7,7 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"mirea-crm/services/booking-service/internal/infra"
+	"mirea-crm/libs/go-common/infra"
 )
 
 // ownedRepo отдаёт один визит и запоминает, дошло ли дело до смены состояния.

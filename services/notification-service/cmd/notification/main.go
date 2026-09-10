@@ -16,9 +16,10 @@ import (
 
 	realtimev1 "mirea-crm/gen/go/mirea/realtime/v1"
 
+	"mirea-crm/libs/go-common/infra"
 	"mirea-crm/services/notification-service/internal/api"
 	"mirea-crm/services/notification-service/internal/clients"
-	"mirea-crm/services/notification-service/internal/infra"
+	"mirea-crm/services/notification-service/internal/config"
 	"mirea-crm/services/notification-service/internal/notify"
 )
 
@@ -44,7 +45,7 @@ func main() {
 }
 
 func run() error {
-	cfg, err := infra.LoadConfig()
+	cfg, err := config.Load()
 	if err != nil {
 		return err
 	}
@@ -133,7 +134,7 @@ func run() error {
 }
 
 func probe() int {
-	cfg, err := infra.LoadConfig()
+	cfg, err := config.Load()
 	if err != nil {
 		return 1
 	}

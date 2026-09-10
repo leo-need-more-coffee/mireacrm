@@ -4,14 +4,14 @@ import uuid
 from datetime import UTC, datetime
 
 from mirea.events.v1 import events_pb2
+from mireacrm_common.errors import ConflictError, NotFoundError
+from mireacrm_common.events import EventPublisher
+from mireacrm_common.pagination import decode_cursor, encode_cursor
 from sqlalchemy import select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app import commands, models
-from app.infra.errors import ConflictError, NotFoundError
-from app.infra.events import EventPublisher
-from app.infra.pagination import decode_cursor, encode_cursor
 
 
 async def create_company(session: AsyncSession, data: commands.CompanyCreate) -> models.Company:

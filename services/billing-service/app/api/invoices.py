@@ -2,14 +2,14 @@ import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query
+from mireacrm_common.deps import get_context, get_publisher, get_session
+from mireacrm_common.events import EventPublisher
+from mireacrm_common.lifespan import AppContext
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import domain
 from app.api import schemas
-from app.api.deps import get_context, get_publisher, get_session
 from app.infra import access
-from app.infra.events import EventPublisher
-from app.infra.lifespan import AppContext
 from app.models import InvoiceStatus
 
 router = APIRouter(tags=["billing"])

@@ -4,9 +4,9 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from mireacrm_common import identity
 
 from app import domain
-from app.infra import identity
 
 DAY = datetime(2026, 9, 15, tzinfo=UTC)
 SUBJECT = "8f1c0e4e-0000-4000-8000-000000000001"

@@ -3,11 +3,11 @@ from datetime import UTC
 import grpc
 from mirea.common.v1 import common_pb2
 from mirea.core.v1 import core_pb2, core_pb2_grpc
+from mireacrm_common.errors import InvalidArgumentError
+from mireacrm_common.lifespan import AppContext
+from mireacrm_common.rpc import Registration, parse_uuid, to_timestamp
 
 from app import domain
-from app.infra.errors import InvalidArgumentError
-from app.infra.lifespan import AppContext
-from app.infra.rpc import Registration, parse_uuid, to_timestamp
 from app.rpc import mapping
 
 

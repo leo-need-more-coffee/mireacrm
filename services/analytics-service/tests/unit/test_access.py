@@ -1,9 +1,10 @@
 import uuid
 
 import pytest
+from mireacrm_common import identity
+from mireacrm_common.errors import ForbiddenError
 
-from app.infra import access, identity
-from app.infra.errors import ForbiddenError
+from app.infra import access
 
 OWN = uuid.uuid4()
 OTHER = uuid.uuid4()

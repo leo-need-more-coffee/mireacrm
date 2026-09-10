@@ -7,6 +7,11 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /srv
 
+# Контекст сборки — корень репозитория: шлюзу нужен общий обвяз.
+# Берётся только ядро: базы, брокера и gRPC у шлюза нет.
+COPY libs/py-common /srv/common
+RUN pip install /srv/common
+
 COPY services/gateway/pyproject.toml /srv/
 COPY services/gateway/app /srv/app
 RUN pip install .

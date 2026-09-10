@@ -3,9 +3,8 @@
 import uuid
 
 import pytest
-
-from app.infra.errors import InvalidArgumentError
-from app.infra.pagination import decode_cursor, encode_cursor
+from mireacrm_common.errors import InvalidArgumentError
+from mireacrm_common.pagination import decode_cursor, encode_cursor
 
 
 def test_roundtrip():

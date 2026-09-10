@@ -3,8 +3,8 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from mireacrm_common.errors import ConflictError
 
-from app.infra.errors import ConflictError
 from app.models import Employee, EmployeeRole
 
 DAY = datetime(2026, 9, 10, tzinfo=UTC)

@@ -17,7 +17,7 @@ import (
 	commonv1 "mirea-crm/gen/go/mirea/common/v1"
 	eventsv1 "mirea-crm/gen/go/mirea/events/v1"
 	realtimev1 "mirea-crm/gen/go/mirea/realtime/v1"
-	"mirea-crm/services/notification-service/internal/infra"
+	"mirea-crm/libs/go-common/infra"
 	"mirea-crm/services/notification-service/internal/notify"
 )
 

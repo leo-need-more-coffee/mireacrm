@@ -10,7 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"mirea-crm/services/booking-service/internal/infra"
+	"mirea-crm/libs/go-common/infra"
 )
 
 func appointment(employee uuid.UUID, from, to time.Time, status Status) *Appointment {

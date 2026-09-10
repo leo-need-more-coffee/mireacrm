@@ -4,23 +4,16 @@ go 1.26.0
 
 replace mirea-crm/gen/go => ../../gen/go
 
+replace mirea-crm/libs/go-common => ../../libs/go-common
+
 require (
 	github.com/go-chi/chi/v5 v5.3.2
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.11.0
-	github.com/nats-io/nats.go v1.53.1
-	github.com/pressly/goose/v3 v3.28.0
-	github.com/prometheus/client_golang v1.24.1
-	github.com/rabbitmq/amqp091-go v1.14.0
-	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.70.0
-	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.71.0
-	go.opentelemetry.io/otel v1.46.0
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.46.0
-	go.opentelemetry.io/otel/sdk v1.46.0
-	go.opentelemetry.io/otel/trace v1.46.0
 	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.12
 	mirea-crm/gen/go v0.0.0-00010101000000-000000000000
+	mirea-crm/libs/go-common v0.0.0-00010101000000-000000000000
 )
 
 require (
@@ -37,15 +30,25 @@ require (
 	github.com/klauspost/compress v1.19.2 // indirect
 	github.com/mfridman/interpolate v0.0.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
+	github.com/nats-io/nats.go v1.53.1 // indirect
 	github.com/nats-io/nkeys v0.4.15 // indirect
 	github.com/nats-io/nuid v1.0.1 // indirect
+	github.com/pressly/goose/v3 v3.28.0 // indirect
+	github.com/prometheus/client_golang v1.24.1 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.70.1 // indirect
 	github.com/prometheus/procfs v0.22.0 // indirect
+	github.com/rabbitmq/amqp091-go v1.14.0 // indirect
 	github.com/sethvargo/go-retry v0.4.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
+	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.70.0 // indirect
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.71.0 // indirect
+	go.opentelemetry.io/otel v1.46.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.46.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.46.0 // indirect
 	go.opentelemetry.io/otel/metric v1.46.0 // indirect
+	go.opentelemetry.io/otel/sdk v1.46.0 // indirect
+	go.opentelemetry.io/otel/trace v1.46.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/crypto v0.55.0 // indirect

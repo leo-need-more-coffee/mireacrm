@@ -2,13 +2,13 @@ import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query, status
+from mireacrm_common.deps import get_publisher, get_session
+from mireacrm_common.events import EventPublisher
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import commands, domain
 from app.api import schemas
-from app.api.deps import get_publisher, get_session
 from app.infra import access
-from app.infra.events import EventPublisher
 from app.models import EmployeeRole
 
 router = APIRouter(tags=["employees"])

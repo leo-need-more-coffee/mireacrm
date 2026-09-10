@@ -5,14 +5,14 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from mireacrm_common import tracing
+from mireacrm_common.db import create_engine, create_session_factory
+from mireacrm_common.errors import ConflictError, NotFoundError
+from mireacrm_common.health import check_readiness
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from app import commands, domain
-from app.infra import tracing
-from app.infra.db import create_engine, create_session_factory
-from app.infra.errors import ConflictError, NotFoundError
-from app.infra.health import check_readiness
 from app.models import EmployeeRole
 
 DAY = datetime(2026, 9, 10, tzinfo=UTC)

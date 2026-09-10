@@ -6,14 +6,14 @@ import pytest_asyncio
 from alembic import command
 from alembic.config import Config
 from google.protobuf.message import Message
+from mireacrm_common import tracing
+from mireacrm_common.db import create_engine, create_session_factory
+from mireacrm_common.events import EventPublisher
+from mireacrm_common.lifespan import AppContext
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.infra import tracing
 from app.infra.config import Settings
-from app.infra.db import create_engine, create_session_factory
-from app.infra.events import EventPublisher
-from app.infra.lifespan import AppContext
 
 TEST_DSN = os.getenv(
     "CLIENT_TEST_POSTGRES_DSN",

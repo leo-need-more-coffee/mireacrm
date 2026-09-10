@@ -16,9 +16,10 @@ import (
 
 	eventsv1 "mirea-crm/gen/go/mirea/events/v1"
 
+	"mirea-crm/libs/go-common/infra"
 	"mirea-crm/services/inventory-service/internal/api"
 	"mirea-crm/services/inventory-service/internal/clients"
-	"mirea-crm/services/inventory-service/internal/infra"
+	"mirea-crm/services/inventory-service/internal/config"
 	"mirea-crm/services/inventory-service/internal/inventory"
 	"mirea-crm/services/inventory-service/migrations"
 )
@@ -41,7 +42,7 @@ func main() {
 }
 
 func run() error {
-	cfg, err := infra.LoadConfig()
+	cfg, err := config.Load()
 	if err != nil {
 		return err
 	}
@@ -165,7 +166,7 @@ func writeOffHandler(service *inventory.Service) infra.Handler {
 }
 
 func probe() int {
-	cfg, err := infra.LoadConfig()
+	cfg, err := config.Load()
 	if err != nil {
 		return 1
 	}

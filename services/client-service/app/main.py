@@ -3,20 +3,20 @@ import logging
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from sqlalchemy.exc import IntegrityError
-
-from app.api import clients
-from app.infra import identity, observability, tracing
-from app.infra.config import Settings, get_settings
-from app.infra.errors import (
+from mireacrm_common import identity, observability, tracing
+from mireacrm_common.errors import (
     ConflictError,
     ForbiddenError,
     InvalidArgumentError,
     NotFoundError,
     UnavailableError,
 )
-from app.infra.health import check_readiness
-from app.infra.lifespan import AppContext, build_context
+from mireacrm_common.health import check_readiness
+from mireacrm_common.lifespan import AppContext, build_context
+from sqlalchemy.exc import IntegrityError
+
+from app.api import clients
+from app.infra.config import Settings, get_settings
 
 log = logging.getLogger("client")
 
@@ -77,8 +77,8 @@ def _make_handler(status_code: int):
 async def serve(settings: Settings | None = None) -> None:
     """REST и gRPC в одном event loop: один процесс, один контейнер."""
     import uvicorn
+    from mireacrm_common.rpc import build_server
 
-    from app.infra.rpc import build_server
     from app.rpc.servicer import registration
 
     settings = settings or get_settings()

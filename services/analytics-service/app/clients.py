@@ -4,8 +4,7 @@ import uuid
 from dataclasses import dataclass
 
 from mirea.core.v1 import core_pb2, core_pb2_grpc
-
-from app.infra import grpc_client
+from mireacrm_common import grpc_client
 
 
 @dataclass(frozen=True, slots=True)

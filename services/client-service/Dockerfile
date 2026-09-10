@@ -7,9 +7,14 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /srv
 
-# Контекст сборки — корень репозитория: сервису нужен gen/python из него.
+# Контекст сборки — корень репозитория: сервису нужны из него контракты
+# и общий обвяз. Оба ставятся до кода сервиса — меняются они реже,
+# и слой с ними переиспользуется между сборками.
 COPY gen/python /srv/contracts
 RUN pip install /srv/contracts
+
+COPY libs/py-common /srv/common
+RUN pip install "/srv/common[db,events,grpc]"
 
 COPY services/client-service/pyproject.toml services/client-service/alembic.ini /srv/
 COPY services/client-service/app /srv/app

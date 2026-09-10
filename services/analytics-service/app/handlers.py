@@ -10,9 +10,9 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 
 from mirea.events.v1 import events_pb2
+from mireacrm_common.lifespan import AppContext
 
 from app import domain, models
-from app.infra.lifespan import AppContext
 
 log = logging.getLogger(__name__)
 

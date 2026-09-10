@@ -8,9 +8,9 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from mireacrm_common import identity
 
 from app import commands, domain
-from app.infra import identity
 from app.models import EmployeeRole
 
 DAY = datetime(2026, 9, 10, tzinfo=UTC)

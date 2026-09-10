@@ -1,8 +1,7 @@
 """Контекст трассировки W3C."""
 
 import pytest
-
-from app.infra import tracing
+from mireacrm_common import tracing
 
 
 def test_generated_header_is_valid():

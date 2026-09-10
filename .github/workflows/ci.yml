@@ -76,9 +76,48 @@ jobs:
           git diff --exit-code gen/ \
             || { echo "::error::gen/ не соответствует proto/ — выполните buf generate"; exit 1; }
 
+  common:
+    name: Общий обвяз
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: libs/go-common/go.mod
+          cache-dependency-path: libs/go-common/go.sum
+
+      - name: Линтер Python-обвяза
+        run: |
+          pip install ruff
+          ruff check libs/py-common
+
+      - name: Обвяз ставится сам по себе
+        # Ядро без дополнений — то, что берёт шлюз. Если сюда протечёт
+        # импорт базы или брокера, поломка вылезет здесь, а не в его образе.
+        run: |
+          pip install ./gen/python ./libs/py-common
+          python -c "import mireacrm_common.tracing, mireacrm_common.observability"
+
+      - name: Go-обвяз
+        working-directory: libs/go-common
+        run: |
+          unformatted=$(gofmt -l .)
+          [ -z "$unformatted" ] || { echo "::error::не отформатировано: $unformatted"; exit 1; }
+          go vet ./...
+          go test ./...
+
   python-tests:
     name: Тесты Python (${{ matrix.service }})
     runs-on: ubuntu-latest
+    # Обвяз общий: если сломан он, сломаны все шесть работ разом.
+    # Дешевле увидеть это один раз.
+    needs: common
     strategy:
       fail-fast: false
       matrix:
@@ -147,9 +186,10 @@ jobs:
           [ -d "$directory" ] || directory="services/${{ matrix.service }}-service"
           echo "SERVICE_DIR=$directory" >> "$GITHUB_ENV"
           python -m pip install --upgrade pip
-          # Контракты ставятся первыми: сервисы зависят от них по имени,
-          # а на PyPI такого пакета нет.
+          # Контракты и общий обвяз ставятся первыми: сервисы зависят от них
+          # по имени, а на PyPI таких пакетов нет.
           pip install ./gen/python
+          pip install "./libs/py-common[db,events,grpc]"
           pip install -e "$directory[dev]"
 
       - name: Линтер
@@ -169,6 +209,7 @@ jobs:
   go-tests:
     name: Тесты Go (${{ matrix.service }})
     runs-on: ubuntu-latest
+    needs: common
     strategy:
       fail-fast: false
       matrix:
@@ -270,7 +311,7 @@ jobs:
 
   dockerhub:
     name: Публикация в DockerHub
-    needs: [contracts, python-tests, go-tests, secrets-check]
+    needs: [contracts, common, python-tests, go-tests, secrets-check]
     if: github.ref == 'refs/heads/main' && needs.secrets-check.outputs.dockerhub == 'true'
     runs-on: ubuntu-latest
     # inventory-service держит постоянное соединение с брокером, поэтому
@@ -311,7 +352,7 @@ jobs:
 
   yandex-cloud:
     name: Развёртывание в Яндекс.Облаке
-    needs: [contracts, python-tests, go-tests, secrets-check]
+    needs: [contracts, common, python-tests, go-tests, secrets-check]
     if: github.ref == 'refs/heads/main' && needs.secrets-check.outputs.yandex == 'true'
     runs-on: ubuntu-latest
     # catalog-service — чистый справочник: отвечает на запросы, не держит

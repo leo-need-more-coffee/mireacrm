@@ -1,11 +1,11 @@
 import uuid
 
 from fastapi import APIRouter, Depends, status
+from mireacrm_common.deps import get_session
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import commands, domain
 from app.api import schemas
-from app.api.deps import get_session
 
 router = APIRouter(tags=["catalog"])
 

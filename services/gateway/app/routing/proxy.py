@@ -4,8 +4,8 @@ import logging
 
 import httpx
 from fastapi import Request, Response
+from mireacrm_common import tracing
 
-from app.infra import tracing
 from app.infra.errors import UpstreamTimeoutError, UpstreamUnavailableError
 from app.security.principal import HEADERS, Principal
 

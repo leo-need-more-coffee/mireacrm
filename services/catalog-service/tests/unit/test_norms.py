@@ -3,8 +3,8 @@
 import uuid
 
 import pytest
+from mireacrm_common.errors import ConflictError
 
-from app.infra.errors import ConflictError
 from app.models import ConsumptionNorm, Service
 
 

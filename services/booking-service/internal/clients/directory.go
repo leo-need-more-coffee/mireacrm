@@ -16,8 +16,8 @@ import (
 	commonv1 "mirea-crm/gen/go/mirea/common/v1"
 	corev1 "mirea-crm/gen/go/mirea/core/v1"
 
+	"mirea-crm/libs/go-common/infra"
 	"mirea-crm/services/booking-service/internal/booking"
-	"mirea-crm/services/booking-service/internal/infra"
 )
 
 // Directory — синхронные вызовы к соседям: график специалиста из core,

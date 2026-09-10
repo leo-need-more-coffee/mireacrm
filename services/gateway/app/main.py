@@ -3,9 +3,9 @@ import logging
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from mireacrm_common import observability, tracing
 
 from app.api import auth, meta
-from app.infra import observability, tracing
 from app.infra.config import Settings, get_settings
 from app.infra.errors import (
     ForbiddenError,

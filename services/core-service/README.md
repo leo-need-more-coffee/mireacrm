@@ -185,7 +185,9 @@ docker compose up -d core-service
 Локально, без контейнера:
 
 ```bash
-python -m venv .venv && .venv/bin/pip install -e ".[dev]" -e ../../gen/python
+python -m venv .venv
+.venv/bin/pip install -e ../../gen/python -e "../../libs/py-common[db,events,grpc]"
+.venv/bin/pip install -e ".[dev]"
 .venv/bin/alembic upgrade head
 .venv/bin/python -m app.main
 ```
