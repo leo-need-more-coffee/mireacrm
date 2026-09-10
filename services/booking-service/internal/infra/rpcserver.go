@@ -38,6 +38,7 @@ func ServerInterceptor(
 
 func toStatus(ctx context.Context, method string, err error) error {
 	var notFound *NotFoundError
+	var forbidden *ForbiddenError
 	var conflict *ConflictError
 	var invalid *InvalidArgumentError
 	var unavailable *UnavailableError
@@ -45,6 +46,8 @@ func toStatus(ctx context.Context, method string, err error) error {
 	switch {
 	case errors.As(err, &notFound):
 		return status.Error(codes.NotFound, err.Error())
+	case errors.As(err, &forbidden):
+		return status.Error(codes.PermissionDenied, err.Error())
 	case errors.As(err, &conflict):
 		return status.Error(codes.Aborted, err.Error())
 	case errors.As(err, &invalid):

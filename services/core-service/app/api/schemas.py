@@ -47,3 +47,13 @@ class EmployeeOut(BaseModel):
 class ScheduleOut(BaseModel):
     employee: EmployeeOut
     shifts: list[ShiftOut]
+
+
+class EmployeeIdentityOut(BaseModel):
+    """Кем является учётная запись. Служебный ответ для шлюза."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    employee_id: uuid.UUID
+    branch_id: uuid.UUID
+    role: EmployeeRole

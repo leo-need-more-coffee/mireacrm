@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import domain
 from app.api import schemas
 from app.api.deps import get_context, get_session
+from app.infra import access
 from app.infra.lifespan import AppContext
 
 router = APIRouter(tags=["analytics"])
@@ -48,6 +49,8 @@ async def employee_workload(
     window: tuple[datetime, datetime] = Depends(period),
     session: AsyncSession = Depends(get_session),
 ):
+    access.ensure_owner(employee_id, "загрузка сотрудника")
+
     since, until = window
     workload = await domain.employee_workload(session, employee_id, since, until)
 

@@ -19,15 +19,22 @@ const (
 	HeaderSubject  = "x-user-id"
 	HeaderUsername = "x-user-name"
 	HeaderRoles    = "x-user-roles"
+	HeaderEmployee = "x-employee-id"
 )
 
+// Роли, которым видно чужое. Специалист работает только со своим.
+var privilegedRoles = []string{"admin", "manager"}
+
 type Caller struct {
-	Subject  string
-	Username string
-	Roles    []string
+	Subject    string
+	Username   string
+	Roles      []string
+	EmployeeID string
 }
 
 func (c Caller) Known() bool { return c.Subject != "" }
+
+func (c Caller) Privileged() bool { return c.HasAny(privilegedRoles...) }
 
 func (c Caller) HasAny(roles ...string) bool {
 	for _, own := range c.Roles {
@@ -51,7 +58,7 @@ func CallerFrom(ctx context.Context) Caller {
 	return caller
 }
 
-func callerFromHeaders(subject, username, roles string) Caller {
+func callerFromHeaders(subject, username, roles, employee string) Caller {
 	if subject == "" {
 		return Caller{}
 	}
@@ -59,7 +66,7 @@ func callerFromHeaders(subject, username, roles string) Caller {
 	if err != nil {
 		name = username
 	}
-	caller := Caller{Subject: subject, Username: name}
+	caller := Caller{Subject: subject, Username: name, EmployeeID: employee}
 	for _, role := range strings.Split(roles, ",") {
 		if role = strings.TrimSpace(role); role != "" {
 			caller.Roles = append(caller.Roles, role)
@@ -75,6 +82,7 @@ func IdentityMiddleware(next http.Handler) http.Handler {
 			r.Header.Get(HeaderSubject),
 			r.Header.Get(HeaderUsername),
 			r.Header.Get(HeaderRoles),
+			r.Header.Get(HeaderEmployee),
 		)
 		next.ServeHTTP(w, r.WithContext(WithCaller(r.Context(), caller)))
 	})
@@ -87,7 +95,8 @@ func callerFromMetadata(md metadata.MD) Caller {
 		}
 		return ""
 	}
-	return callerFromHeaders(first(HeaderSubject), first(HeaderUsername), first(HeaderRoles))
+	return callerFromHeaders(
+		first(HeaderSubject), first(HeaderUsername), first(HeaderRoles), first(HeaderEmployee))
 }
 
 // Outgoing собирает метаданные для вызова соседа: трасса и личность.
@@ -101,10 +110,29 @@ func Outgoing(ctx context.Context) context.Context {
 			HeaderSubject, caller.Subject,
 			HeaderUsername, url.QueryEscape(caller.Username),
 			HeaderRoles, strings.Join(caller.Roles, ","),
+			HeaderEmployee, caller.EmployeeID,
 		)
 	}
 	if len(pairs) == 0 {
 		return ctx
 	}
 	return metadata.AppendToOutgoingContext(ctx, pairs...)
+}
+
+// EnsureOwner пропускает вызов, если объект принадлежит вызывающему.
+//
+// Роль проверяет шлюз, принадлежность — сервис-владелец: только он знает, чей
+// это объект. Вызов без личности — обращение изнутри системы, а не от
+// человека: потребитель события или служебная задача. Снаружи такой вызов не
+// сделать, заголовки личности шлюз затирает.
+func EnsureOwner(caller Caller, ownerID, what string) error {
+	if !caller.Known() || caller.Privileged() {
+		return nil
+	}
+	// Пустая привязка означает, что учётной записи не соответствует ни один
+	// сотрудник. Отказ по умолчанию: иначе такая учётка видела бы всё.
+	if caller.EmployeeID == "" || caller.EmployeeID != ownerID {
+		return Forbidden(what)
+	}
+	return nil
 }

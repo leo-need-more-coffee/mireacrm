@@ -30,6 +30,15 @@ func InvalidArgument(format string, args ...any) error {
 	return &InvalidArgumentError{Reason: fmt.Sprintf(format, args...)}
 }
 
+// ForbiddenError — роли достаточно, но объект принадлежит другому сотруднику.
+type ForbiddenError struct{ What string }
+
+func (e *ForbiddenError) Error() string {
+	return e.What + ": доступ только к своим записям"
+}
+
+func Forbidden(what string) error { return &ForbiddenError{What: what} }
+
 // UnavailableError — сосед недоступен. Не наша поломка, поэтому 503, а не 500:
 // клиенту имеет смысл повторить запрос.
 type UnavailableError struct {

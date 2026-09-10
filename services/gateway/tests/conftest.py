@@ -15,6 +15,8 @@ from app.routing.proxy import Proxy
 from app.security.tokens import TokenVerifier
 
 KID = "test-key"
+SUBJECT = "8f1c0e4e-0000-4000-8000-000000000001"
+EMPLOYEE_ID = "3a7c9d21-0000-4000-8000-0000000000aa"
 ISSUER = "http://keycloak.test/realms/mirea"
 AUDIENCE = "mirea-api"
 CLIENT_ID = "mirea-web"
@@ -69,7 +71,7 @@ def issue(keypair):
             "aud": AUDIENCE,
             "azp": CLIENT_ID,
             "typ": "Bearer",
-            "sub": "8f1c0e4e-0000-4000-8000-000000000001",
+            "sub": SUBJECT,
             "preferred_username": "owner",
             "realm_access": {"roles": ["admin"]},
             "iat": now,
@@ -81,6 +83,21 @@ def issue(keypair):
         return jwt.encode(claims, private, algorithm="RS256", headers=headers)
 
     return factory
+
+
+class StubEmployees:
+    """Подменяет справочник сотрудников и запоминает обращения."""
+
+    def __init__(self, mapping: dict[str, str] | None = None) -> None:
+        self.mapping = mapping or {}
+        self.lookups: list[str] = []
+
+    async def employee_id(self, subject: str) -> str:
+        self.lookups.append(subject)
+        return self.mapping.get(subject, "")
+
+    async def close(self) -> None:
+        pass
 
 
 class RecordingUpstream:
@@ -110,7 +127,12 @@ def upstream() -> RecordingUpstream:
 
 
 @pytest.fixture
-def app(settings, verifier, upstream):
+def employees() -> StubEmployees:
+    return StubEmployees({SUBJECT: EMPLOYEE_ID})
+
+
+@pytest.fixture
+def app(settings, verifier, upstream, employees):
     transport = httpx.MockTransport(upstream.handler)
     proxy = Proxy(
         settings.upstreams(),
@@ -122,6 +144,7 @@ def app(settings, verifier, upstream):
         verifier=verifier,
         router=Router(),
         proxy=proxy,
+        employees=employees,
     )
     return create_app(context)
 

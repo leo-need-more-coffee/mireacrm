@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import commands, domain
 from app.api import schemas
 from app.api.deps import get_publisher, get_session
+from app.infra import access
 from app.infra.events import EventPublisher
 from app.models import EmployeeRole
 
@@ -38,6 +39,19 @@ async def list_employees(
     return employees
 
 
+@router.get("/internal/employees/by-subject/{subject}", response_model=schemas.EmployeeIdentityOut)
+async def resolve_by_subject(subject: str, session: AsyncSession = Depends(get_session)):
+    """Кем является учётная запись.
+
+    Служебный маршрут: в таблице шлюза его нет, снаружи он недоступен. Шлюз
+    вызывает его сам, чтобы передать сервисам сотрудника в заголовке.
+    """
+    employee = await domain.resolve_by_subject(session, subject)
+    return schemas.EmployeeIdentityOut(
+        employee_id=employee.id, branch_id=employee.branch_id, role=employee.role
+    )
+
+
 @router.get("/employees/{employee_id}/schedule", response_model=schemas.ScheduleOut)
 async def get_schedule(
     employee_id: uuid.UUID,
@@ -45,5 +59,9 @@ async def get_schedule(
     end_at: datetime = Query(alias="to"),
     session: AsyncSession = Depends(get_session),
 ):
+    # Проверка стоит здесь, а не в доменной операции: ту же операцию вызывает
+    # booking, когда выдаёт свободные слоты филиала, и там чужой график —
+    # законный запрос.
+    access.ensure_owner(employee_id, "график сотрудника")
     employee, shifts = await domain.get_schedule(session, employee_id, start_at, end_at)
     return schemas.ScheduleOut(employee=employee, shifts=shifts)

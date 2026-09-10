@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     jwks_cooldown: float = 30.0
     clock_skew: int = 10
 
+    # Связь учётной записи с сотрудником меняется редко, а спрашивается
+    # на каждом запросе непривилегированного вызывающего.
+    employee_cache_ttl: float = 60.0
     upstream_timeout: float = 10.0
     core_url: str = "http://localhost:8001"
     catalog_url: str = "http://localhost:8002"

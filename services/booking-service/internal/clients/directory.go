@@ -109,6 +109,8 @@ func dial(addr string) (*grpc.ClientConn, error) {
 // становиться пятисоткой у нас.
 func translate(err error, dependency, what string, key any) error {
 	switch status.Code(err) {
+	case codes.PermissionDenied:
+		return infra.Forbidden(dependency)
 	case codes.NotFound:
 		return infra.NotFound(what, key)
 	case codes.InvalidArgument:

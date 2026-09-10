@@ -62,6 +62,9 @@ class Employee(Base):
     branch_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("branches.id", ondelete="CASCADE"))
     full_name: Mapped[str] = mapped_column(String(200))
     role: Mapped[EmployeeRole] = mapped_column(Enum(EmployeeRole, name="employee_role"))
+    # Учётная запись, которой соответствует сотрудник. Может отсутствовать:
+    # не у каждого сотрудника есть доступ в систему.
+    keycloak_subject: Mapped[str | None] = mapped_column(String(64), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[CreatedAt]
 

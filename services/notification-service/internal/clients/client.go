@@ -67,6 +67,8 @@ func (c *Clients) ForClient(
 
 func translate(err error, clientID uuid.UUID) error {
 	switch status.Code(err) {
+	case codes.PermissionDenied:
+		return infra.Forbidden("client")
 	case codes.NotFound:
 		return infra.NotFound("client", clientID)
 	case codes.InvalidArgument:

@@ -1,6 +1,7 @@
 import os
 from collections.abc import AsyncIterator
 
+import httpx
 import pytest
 import pytest_asyncio
 from alembic import command
@@ -91,3 +92,13 @@ async def session(context: AppContext) -> AsyncIterator[AsyncSession]:
         for table in _TABLES:
             await db.execute(text(f"TRUNCATE {table} CASCADE"))
         await db.commit()
+
+
+@pytest_asyncio.fixture
+async def api(context: AppContext) -> AsyncIterator[httpx.AsyncClient]:
+    """Приложение целиком: проверки на границе HTTP доменными вызовами не видны."""
+    from app.main import create_app
+
+    transport = httpx.ASGITransport(app=create_app(context))
+    async with httpx.AsyncClient(transport=transport, base_url="http://service") as client:
+        yield client

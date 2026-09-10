@@ -4,9 +4,13 @@ import httpx
 import pytest
 
 from app.routing.proxy import Proxy
-from app.security.principal import HEADER_ROLES, HEADER_SUBJECT, HEADER_USERNAME
-
-SUBJECT = "8f1c0e4e-0000-4000-8000-000000000001"
+from app.security.principal import (
+    HEADER_EMPLOYEE,
+    HEADER_ROLES,
+    HEADER_SUBJECT,
+    HEADER_USERNAME,
+)
+from tests.conftest import EMPLOYEE_ID, SUBJECT, StubEmployees
 
 
 def auth(token: str) -> dict[str, str]:
@@ -73,6 +77,35 @@ class TestForwarding:
         assert upstream.last.url.params["source"] == "phone"
         assert upstream.last_body() == {"phone": "+79990000000"}
 
+    async def test_employee_reaches_upstream(self, client, issue, upstream) -> None:
+        """Сервису-владельцу нужен сотрудник, иначе сравнивать не с чем."""
+        token = issue(realm_access={"roles": ["specialist"]})
+        await client.get("/templates", headers=auth(token))
+        assert upstream.last.headers[HEADER_EMPLOYEE] == EMPLOYEE_ID
+
+    async def test_unlinked_account_gets_empty_employee(
+        self, client, issue, upstream, employees
+    ) -> None:
+        """Учётной записи может не соответствовать сотрудник — это не ошибка."""
+        employees.mapping.clear()
+        token = issue(realm_access={"roles": ["specialist"]})
+        await client.get("/templates", headers=auth(token))
+        assert upstream.last.headers[HEADER_EMPLOYEE] == ""
+
+    async def test_privileged_caller_is_not_resolved(
+        self, client, issue, employees
+    ) -> None:
+        """Администратору принадлежность безразлична — ядро дёргать незачем."""
+        await client.get("/templates", headers=auth(issue()))
+        assert employees.lookups == []
+
+    async def test_forged_employee_is_overwritten(self, client, issue, upstream) -> None:
+        headers = auth(issue(realm_access={"roles": ["specialist"]})) | {
+            HEADER_EMPLOYEE: "00000000-dead-4000-8000-000000000000",
+        }
+        await client.get("/templates", headers=headers)
+        assert upstream.last.headers[HEADER_EMPLOYEE] == EMPLOYEE_ID
+
     async def test_trace_continues(self, client, issue, upstream) -> None:
         traceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
         headers = auth(issue()) | {"traceparent": traceparent}
@@ -93,7 +126,7 @@ class TestForwarding:
             client=httpx.AsyncClient(transport=httpx.MockTransport(refuse)),
         )
         app = create_app(
-            AppContext(settings, None, verifier, Router(), proxy)
+            AppContext(settings, None, verifier, Router(), proxy, StubEmployees())
         )
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://gateway") as instance:
@@ -124,7 +157,9 @@ class TestUpstreamFailure:
             settings.upstreams(),
             client=httpx.AsyncClient(transport=httpx.MockTransport(fail)),
         )
-        app = create_app(AppContext(settings, None, verifier, Router(), proxy))
+        app = create_app(
+            AppContext(settings, None, verifier, Router(), proxy, StubEmployees())
+        )
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://gateway") as instance:
             response = await instance.get("/templates", headers=auth(issue()))

@@ -27,6 +27,7 @@ func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 	detail := "внутренняя ошибка"
 
 	var notFound *NotFoundError
+	var forbidden *ForbiddenError
 	var conflict *ConflictError
 	var invalid *InvalidArgumentError
 	var unavailable *UnavailableError
@@ -34,6 +35,8 @@ func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.As(err, &notFound):
 		status, detail = http.StatusNotFound, err.Error()
+	case errors.As(err, &forbidden):
+		status, detail = http.StatusForbidden, err.Error()
 	case errors.As(err, &conflict):
 		status, detail = http.StatusConflict, err.Error()
 	case errors.As(err, &invalid):

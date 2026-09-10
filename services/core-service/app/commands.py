@@ -36,4 +36,6 @@ class ShiftIn(BaseModel):
 class EmployeeCreate(BaseModel):
     full_name: str = Field(min_length=1, max_length=200)
     role: EmployeeRole
+    # Учётная запись в системе управления доступом, если она у сотрудника есть.
+    keycloak_subject: str = Field(default="", max_length=64)
     shifts: list[ShiftIn] = Field(default_factory=list)

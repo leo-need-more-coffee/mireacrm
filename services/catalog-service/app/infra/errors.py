@@ -17,6 +17,14 @@ class InvalidArgumentError(DomainError):
     """Аргумент не проходит проверку до обращения к состоянию."""
 
 
+class ForbiddenError(DomainError):
+    """Роли достаточно, но объект принадлежит другому сотруднику."""
+
+    def __init__(self, what: str) -> None:
+        super().__init__(f"{what}: доступ только к своим записям")
+        self.what = what
+
+
 class UnavailableError(DomainError):
     """Сосед недоступен. Не наша поломка, поэтому 503, а не 500."""
 

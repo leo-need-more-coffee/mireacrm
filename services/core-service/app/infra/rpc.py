@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from app.infra import identity, observability, tracing
 from app.infra.errors import (
     ConflictError,
+    ForbiddenError,
     InvalidArgumentError,
     NotFoundError,
     UnavailableError,
@@ -28,6 +29,7 @@ class ServerInterceptor(grpc.aio.ServerInterceptor):
 
     _CODES: ClassVar[dict[type[Exception], grpc.StatusCode]] = {
         NotFoundError: grpc.StatusCode.NOT_FOUND,
+        ForbiddenError: grpc.StatusCode.PERMISSION_DENIED,
         InvalidArgumentError: grpc.StatusCode.INVALID_ARGUMENT,
         ConflictError: grpc.StatusCode.ABORTED,
         UnavailableError: grpc.StatusCode.UNAVAILABLE,

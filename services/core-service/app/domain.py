@@ -1,7 +1,7 @@
 """Бизнес-операции. Используются и REST-слоем, и gRPC-сервером."""
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from mirea.events.v1 import events_pb2
 from sqlalchemy import select, tuple_
@@ -67,7 +67,12 @@ async def hire_employee(
 ) -> models.Employee:
     await get_branch(session, branch_id)
 
-    employee = models.Employee(branch_id=branch_id, full_name=data.full_name, role=data.role)
+    employee = models.Employee(
+        branch_id=branch_id,
+        full_name=data.full_name,
+        role=data.role,
+        keycloak_subject=data.keycloak_subject or None,
+    )
     employee.assign_shifts((s.starts_at, s.ends_at) for s in data.shifts)
     session.add(employee)
     await session.commit()
@@ -121,9 +126,34 @@ async def list_employees(
     return rows, encode_cursor(rows[-1].full_name, rows[-1].id) if has_more else ""
 
 
+async def resolve_by_subject(session: AsyncSession, subject: str) -> models.Employee:
+    """Какому сотруднику соответствует учётная запись.
+
+    Спрашивает шлюз, чтобы передать ответ дальше в заголовке: иначе каждый
+    сервис, проверяющий принадлежность, ходил бы сюда сам.
+    """
+    employee = await session.scalar(
+        select(models.Employee).where(models.Employee.keycloak_subject == subject)
+    )
+    if employee is None:
+        raise NotFoundError("учётная запись", subject)
+    return employee
+
+
+def _aware(value: datetime) -> datetime:
+    """Дата без часового пояса считается UTC.
+
+    В запросе можно передать просто дату — тогда FastAPI отдаёт наивное
+    значение, а в базе время хранится со смещением. Сравнение таких значений
+    в Python — TypeError и пятисотка на ровном месте.
+    """
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+
+
 async def get_schedule(
     session: AsyncSession, employee_id: uuid.UUID, start_at: datetime, end_at: datetime
 ) -> tuple[models.Employee, list[models.WorkShift]]:
+    start_at, end_at = _aware(start_at), _aware(end_at)
     employee = await get_employee(session, employee_id)
 
     # Пересечение с запрошенным окном, а не попадание целиком: смена может

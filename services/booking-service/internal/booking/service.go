@@ -169,7 +169,20 @@ func (s *Service) Book(ctx context.Context, request BookRequest) (*Appointment, 
 }
 
 func (s *Service) Get(ctx context.Context, id uuid.UUID) (*Appointment, error) {
-	return s.repo.Get(ctx, id)
+	item, err := s.repo.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.ensureOwn(ctx, item); err != nil {
+		return nil, err
+	}
+	return item, nil
+}
+
+// ensureOwn — специалист работает только со своими визитами. Роль проверил
+// шлюз, а кому принадлежит визит, знает только этот сервис.
+func (s *Service) ensureOwn(ctx context.Context, item *Appointment) error {
+	return infra.EnsureOwner(infra.CallerFrom(ctx), item.EmployeeID.String(), "визит")
 }
 
 func (s *Service) ListByClient(
@@ -184,6 +197,18 @@ func (s *Service) ListByClient(
 // Complete — ключевое событие системы: его ждут inventory (списать материалы),
 // billing (выставить счёт) и analytics (посчитать выручку).
 func (s *Service) Complete(ctx context.Context, id uuid.UUID) (*Appointment, error) {
+	// Проверка до смены состояния: закрыть чужой визит нельзя даже на миг.
+	// Лишнее чтение выполняется только для непривилегированного вызывающего.
+	if caller := infra.CallerFrom(ctx); caller.Known() && !caller.Privileged() {
+		existing, err := s.repo.Get(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if err := s.ensureOwn(ctx, existing); err != nil {
+			return nil, err
+		}
+	}
+
 	item, err := s.repo.SetStatus(ctx, id, StatusScheduled, StatusCompleted)
 	if err != nil {
 		return nil, err

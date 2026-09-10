@@ -10,6 +10,7 @@ from app.infra import identity, observability, tracing
 from app.infra.config import Settings, get_settings
 from app.infra.errors import (
     ConflictError,
+    ForbiddenError,
     InvalidArgumentError,
     NotFoundError,
     UnavailableError,
@@ -21,6 +22,7 @@ log = logging.getLogger("catalog")
 
 _HTTP_CODES: dict[type[Exception], int] = {
     NotFoundError: 404,
+    ForbiddenError: 403,
     ConflictError: 409,
     InvalidArgumentError: 422,
     IntegrityError: 409,

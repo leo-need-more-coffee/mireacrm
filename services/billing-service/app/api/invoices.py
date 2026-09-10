@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import domain
 from app.api import schemas
 from app.api.deps import get_context, get_publisher, get_session
+from app.infra import access
 from app.infra.events import EventPublisher
 from app.infra.lifespan import AppContext
 from app.models import InvoiceStatus
@@ -53,6 +54,7 @@ async def get_commission(
     until: datetime = Query(alias="to"),
     session: AsyncSession = Depends(get_session),
 ):
+    access.ensure_owner(employee_id, "комиссия сотрудника")
     total, count = await domain.employee_commission(session, employee_id, since, until)
     return schemas.CommissionOut(
         employee_id=employee_id,

@@ -76,6 +76,14 @@ def create_app(context: AppContext) -> FastAPI:
         if not principal.has_any(route.roles):
             raise ForbiddenError(route.roles, principal.roles)
 
+        # Кем является вызывающий, нужно знать только тем, кто ограничен
+        # своими объектами: администратору и управляющему принадлежность
+        # безразлична, и обращаться к ядру за ней незачем.
+        if not principal.privileged:
+            principal = principal.with_employee(
+                await context.employees.employee_id(principal.subject)
+            )
+
         response = await context.proxy.forward(route.upstream, request, principal)
         log.info(
             "%s /%s -> %s %s",

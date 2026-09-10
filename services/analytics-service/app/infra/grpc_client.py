@@ -8,6 +8,7 @@ import grpc
 from app.infra import identity, tracing
 from app.infra.errors import (
     ConflictError,
+    ForbiddenError,
     InvalidArgumentError,
     NotFoundError,
     UnavailableError,
@@ -15,6 +16,7 @@ from app.infra.errors import (
 
 _CODES: dict[grpc.StatusCode, Callable[[str], Exception]] = {
     grpc.StatusCode.INVALID_ARGUMENT: InvalidArgumentError,
+    grpc.StatusCode.PERMISSION_DENIED: ForbiddenError,
     grpc.StatusCode.ABORTED: ConflictError,
     grpc.StatusCode.FAILED_PRECONDITION: ConflictError,
 }

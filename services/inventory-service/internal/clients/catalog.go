@@ -62,6 +62,8 @@ func (c *Catalog) ForService(
 
 func translate(err error, serviceID uuid.UUID) error {
 	switch status.Code(err) {
+	case codes.PermissionDenied:
+		return infra.Forbidden("catalog")
 	case codes.NotFound:
 		return infra.NotFound("service", serviceID)
 	case codes.InvalidArgument:

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from app.infra.config import Settings
 from app.routing.matcher import Router
 from app.routing.proxy import Proxy
+from app.security.employees import EmployeeDirectory
 from app.security.keycloak import Keycloak
 from app.security.tokens import TokenVerifier
 
@@ -19,12 +20,14 @@ class AppContext:
     verifier: TokenVerifier
     router: Router
     proxy: Proxy
+    employees: EmployeeDirectory
 
 
 @asynccontextmanager
 async def build_context(settings: Settings) -> AsyncIterator[AppContext]:
     keycloak = Keycloak(settings)
     proxy = Proxy(settings.upstreams(), settings.upstream_timeout)
+    employees = EmployeeDirectory(settings.core_url, settings.employee_cache_ttl)
 
     # Ключи тянем сразу, но неудача не мешает старту: Keycloak может подняться
     # позже, а до первого запроса с токеном они и не нужны.
@@ -38,7 +41,9 @@ async def build_context(settings: Settings) -> AsyncIterator[AppContext]:
             verifier=TokenVerifier(settings, keycloak.keys),
             router=Router(),
             proxy=proxy,
+            employees=employees,
         )
     finally:
         await proxy.close()
+        await employees.close()
         await keycloak.close()
