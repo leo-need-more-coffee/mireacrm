@@ -63,7 +63,12 @@ func (c *Consumer) Close() {
 // Run читает очередь до отмены контекста. Очередь и биндинги объявлены
 // декларативно в deploy/rabbitmq/definitions.json, потребитель их не создаёт.
 func (c *Consumer) Run(ctx context.Context) error {
-	deliveries, err := c.channel.ConsumeWithContext(ctx, c.queue, "", false, false, false, false, nil)
+	// Именно Consume, а не ConsumeWithContext: последний на отмене контекста
+	// шлёт basic.cancel из собственной горутины, и тот сталкивается с
+	// channel.close из Close. Два RPC ждут ответа на одном канале, ответ
+	// достаётся не тому — закрытие зависает навсегда. Подписку снимает
+	// закрытие канала, отдельная отмена не нужна.
+	deliveries, err := c.channel.Consume(c.queue, "", false, false, false, false, nil)
 	if err != nil {
 		return fmt.Errorf("подписка на %s: %w", c.queue, err)
 	}

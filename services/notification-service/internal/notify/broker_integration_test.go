@@ -169,6 +169,42 @@ func createdEvent(after time.Duration) *eventsv1.EventEnvelope {
 	}
 }
 
+// runConsumer запускает потребителя и снимает его в конце теста. Порядок важен:
+// сначала Run обязан выйти, и только потом закрывается канал. Обе фазы под
+// таймаутом — зависание здесь иначе упирается в общий лимит go test и
+// диагностируется десятиминутной паникой.
+func runConsumer(t *testing.T, consumer *infra.Consumer) {
+	t.Helper()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	stopped := make(chan struct{})
+	go func() {
+		defer close(stopped)
+		_ = consumer.Run(ctx)
+	}()
+
+	t.Cleanup(func() {
+		cancel()
+		waitFor(t, stopped, "потребитель не остановился")
+
+		closed := make(chan struct{})
+		go func() {
+			defer close(closed)
+			consumer.Close()
+		}()
+		waitFor(t, closed, "закрытие потребителя зависло")
+	})
+}
+
+func waitFor(t *testing.T, done <-chan struct{}, what string) {
+	t.Helper()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Errorf("%s за 5 секунд", what)
+	}
+}
+
 func TestEventFromBrokerReachesHandler(t *testing.T) {
 	conn, queue := ownQueue(t, "appointment.created", "stock.low")
 
@@ -177,14 +213,10 @@ func TestEventFromBrokerReachesHandler(t *testing.T) {
 	if err != nil {
 		t.Fatalf("потребитель: %v", err)
 	}
-	defer consumer.Close()
 
 	consumer.Handle("appointment.created", service.OnAppointmentCreated)
 	consumer.Handle("stock.low", service.OnStockLow)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() { _ = consumer.Run(ctx) }()
+	runConsumer(t, consumer)
 
 	publish(t, conn, "appointment.created", createdEvent(24*time.Hour))
 
@@ -209,12 +241,9 @@ func TestUnparsableEventDoesNotStopConsumer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("потребитель: %v", err)
 	}
-	defer consumer.Close()
-	consumer.Handle("appointment.created", service.OnAppointmentCreated)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() { _ = consumer.Run(ctx) }()
+	consumer.Handle("appointment.created", service.OnAppointmentCreated)
+	runConsumer(t, consumer)
 
 	channel, err := conn.Channel()
 	if err != nil {
